@@ -53,7 +53,7 @@ namespace Chest
         {
             string text;
             int number;
-            if (values.TryGetValue(key, out text) && int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out number) && number > 0)
+            if (values.TryGetValue(key, out text) && int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out number) && number >= 0)
                 return number;
             return fallback;
         }

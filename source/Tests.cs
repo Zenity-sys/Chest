@@ -23,6 +23,7 @@ namespace Chest
             Book();
             Icons(root);
             Fixtures(root);
+            Preview(root);
             Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
             return failed == 0 ? 0 : 1;
         }
@@ -47,6 +48,18 @@ namespace Chest
             Check(FloatingPanelLayout.Shown(true, false, false, true), "the panel stays while it is being used");
             Check(!FloatingPanelLayout.Shown(true, true, true, true), "a minimised client hides the panel");
             Check(StackText.Format(1089) == "1089" && StackText.Format(10000) == "10k" && StackText.Format(15500) == "15.5k" && StackText.Format(2500000) == "2.5M", "stack numbers use k and M");
+            int columns = ChestFace.Columns(440, 32, 12);
+            Check(columns >= 8 && columns * (32 + 12) <= 440, "every column fits the width (" + columns + ")");
+            Check(ChestFace.ValueText(6929679) == "CURRENT REWARD VALUE: 6,929,679", "value line uses the summed casket total");
+            byte[] note = new byte[40 * 40 * 4];
+            for (int i = 0; i < 40 * 40; i++) { note[i * 4] = 140; note[i * 4 + 1] = 180; note[i * 4 + 2] = 210; note[i * 4 + 3] = 255; }
+            for (int y = 12; y < 24; y++) for (int x = 12; x < 24; x++) { int o = (y * 40 + x) * 4; note[o] = 40; note[o + 1] = 40; note[o + 2] = 180; note[o + 3] = 255; }
+            Check(Noted.LooksNoted(note, 40, 40), "a certificate reads as noted");
+            byte[] bare = Noted.WithoutPaper(note, 40, 40);
+            Check(bare[(16 * 40 + 16) * 4 + 3] == 255 && bare[0] == 140 && bare[3] == 0, "the paper is dropped and the item stays");
+            byte[] solid = new byte[32 * 32 * 4];
+            for (int i = 0; i < solid.Length; i += 4) { solid[i] = 20; solid[i + 1] = 40; solid[i + 2] = 180; solid[i + 3] = 255; }
+            Check(!Noted.LooksNoted(solid, 32, 32), "a plain item is not noted");
         }
 
         static void Book()
@@ -168,6 +181,56 @@ namespace Chest
                 Check(saved == hashes.Count && saved > 0, "unknown crops save (" + saved + " files, " + hashes.Count + " distinct)");
                 try { Directory.Delete(dir, true); } catch (Exception) { }
             }
+        }
+
+        static void Preview(string root)
+        {
+            string[] names = new string[] {
+                "coins-10000.png", "ancient-bones.png", "box-of-clue-scrolls.png", "saradomin-page-1.png",
+                "guthix-page-1.png", "zamorak-page-1.png", "air-rune.png", "death-rune.png",
+                "purple-firelighter.png", "holy-biscuits.png", "uncut-dragonstone.png", "prayer-potion-4.png",
+                "super-restore-4.png", "blue-dragon-mask.png", "red-firelighter.png", "green-firelighter.png"
+            };
+            long[] qty = new long[] { 34, 32, 346, 16, 11, 710, 9, 14, 8, 1089, 23, 2, 3, 2, 5, 1 };
+            List<SlotView> slots = new List<SlotView>();
+            string dir = Path.Combine(root, "assets", "icons");
+            for (int i = 0; i < names.Length; i++)
+            {
+                string path = Path.Combine(dir, names[i]);
+                if (!File.Exists(path)) continue;
+                Frame frame = FramePng.Decode(path);
+                if (frame == null) continue;
+                Bitmap image = new Bitmap(frame.Width, frame.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                System.Drawing.Imaging.BitmapData data = image.LockBits(new Rectangle(0, 0, frame.Width, frame.Height), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                try { System.Runtime.InteropServices.Marshal.Copy(frame.Bgra, 0, data.Scan0, Math.Min(frame.Bgra.Length, data.Stride * frame.Height)); }
+                finally { image.UnlockBits(data); }
+                SlotView slot = new SlotView();
+                slot.Name = Path.GetFileNameWithoutExtension(names[i]);
+                slot.Quantity = qty[i];
+                slot.Image = image;
+                slots.Add(slot);
+            }
+            Check(slots.Count >= 8, "preview icons");
+            using (Bitmap bitmap = new Bitmap(640, 300))
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                ChestFace.Draw(g, new Rectangle(0, 0, bitmap.Width, bitmap.Height), slots, 0, 6929679, 74, -1, -1, false, 32, 12);
+                string folder = Path.Combine(Path.GetTempPath(), "chest-preview");
+                Directory.CreateDirectory(folder);
+                bitmap.Save(Path.Combine(folder, "clue-rewards.png"), System.Drawing.Imaging.ImageFormat.Png);
+                string artifacts = "/opt/cursor/artifacts";
+                try
+                {
+                    if (Directory.Exists("/opt/cursor"))
+                    {
+                        Directory.CreateDirectory(artifacts);
+                        bitmap.Save(Path.Combine(artifacts, "clue-rewards.png"), System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                }
+                catch (Exception) { }
+            }
+            foreach (SlotView slot in slots) if (slot.Image != null) slot.Image.Dispose();
+            Check(true, "grid preview drawn");
         }
 
         static string FindRoot()

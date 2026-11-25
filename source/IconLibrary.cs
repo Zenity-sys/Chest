@@ -11,6 +11,7 @@ namespace Chest
         public string FileName, Name, Group;
         public int Width, Height;
         public byte[] Bgra;
+        public bool Show = true;
         public readonly List<int> Samples = new List<int>();
     }
 
@@ -49,7 +50,12 @@ namespace Chest
                 icon.Width = frame.Width;
                 icon.Height = frame.Height;
                 string[] row;
-                if (catalog.TryGetValue(file, out row)) { icon.Name = row[1]; icon.Group = row[2]; }
+                if (catalog.TryGetValue(file, out row))
+                {
+                    icon.Name = row[1];
+                    icon.Group = row[2];
+                    if (row.Length >= 4 && row[3] == "match") icon.Show = false;
+                }
                 else { icon.Name = Path.GetFileNameWithoutExtension(file); icon.Group = icon.Name; }
                 BuildSamples(icon);
                 icons.Add(icon);
@@ -68,7 +74,6 @@ namespace Chest
                     if (icon.Bgra[i + 3] < 128) continue;
                     int r = icon.Bgra[i + 2], g = icon.Bgra[i + 1], b = icon.Bgra[i];
                     if (r > 210 && g > 175 && b < 70) continue;
-                    if (y < 11) continue;
                     icon.Samples.Add(x);
                     icon.Samples.Add(y);
                     icon.Samples.Add(icon.Bgra[i + 2]);
@@ -87,7 +92,11 @@ namespace Chest
                 {
                     int sx = Math.Min(width - 1, x * width / 32);
                     int sy = Math.Min(height - 1, y * height / 32);
-                    Buffer.BlockCopy(crop, (sy * width + sx) * 4, small, (y * 32 + x) * 4, 4);
+                    int from = (sy * width + sx) * 4;
+                    int to = (y * 32 + x) * 4;
+                    Buffer.BlockCopy(crop, from, small, to, 4);
+                    int r = small[to + 2], g = small[to + 1], b = small[to];
+                    if (r > 210 && g > 175 && b < 70) small[to + 3] = 0;
                 }
             foreach (IconRef icon in icons)
             {
@@ -97,9 +106,11 @@ namespace Chest
                 {
                     int x = icon.Samples[s], y = icon.Samples[s + 1];
                     int i = (y * 32 + x) * 4;
+                    if (small[i + 3] < 128) continue;
                     sad += Math.Abs(small[i + 2] - icon.Samples[s + 2]) + Math.Abs(small[i + 1] - icon.Samples[s + 3]) + Math.Abs(small[i] - icon.Samples[s + 4]);
                     n++;
                 }
+                if (n < 12) continue;
                 double score = 1.0 - sad / (n * 765.0);
                 string group = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
                 string best = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
