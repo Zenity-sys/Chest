@@ -70,3 +70,75 @@ willow-shortbow.png|Willow Shortbow|willow-shortbow
 yew-composite-bow.png|Yew Composite Bow|yew-composite-bow
 yew-shortbow.png|Yew Shortbow|yew-shortbow
 zamorak-page.png|Zamorak Page|zamorak-page
+unnamed-general-00.png|Ancient Page|ancient-page
+unnamed-general-01.png|Saradomin Page|saradomin-page
+unnamed-general-02.png|Guthix Page|guthix-page
+unnamed-general-03.png|Ancient Page|ancient-page
+unnamed-general-04.png|Bandos Page|bandos-page
+unnamed-general-05.png|Unnamed red-and-white hilt|unnamed-red-white-hilt
+unnamed-general-06.png|Unnamed short sword|unnamed-short-sword
+unnamed-general-07.png|Unnamed white blade|unnamed-white-blade
+unnamed-general-08.png|Unnamed curved sword|unnamed-curved-sword
+unnamed-general-09.png|Unnamed purple orb|unnamed-purple-orb
+unnamed-general-10.png|Unnamed red potions|unnamed-red-potions
+unnamed-general-11.png|Unnamed blue robe|unnamed-blue-robe
+unnamed-general-12.png|Unnamed skull chalice|unnamed-skull-chalice
+unnamed-general-13.png|Unnamed gold star|unnamed-gold-star
+unnamed-general-14.png|Unnamed javelin bundle|unnamed-javelin-bundle
+kavros-bandos-page-15.png|Bandos page|bandos-page
+unnamed-easy-16.png|Unnamed blue cap|unnamed-blue-cap
+unnamed-easy-17.png|Unnamed white shield|unnamed-white-shield
+unnamed-easy-18.png|Unnamed red boat|unnamed-red-boat
+unnamed-easy-19.png|Unnamed brown vest|unnamed-brown-vest
+unnamed-easy-20.png|Unnamed blue legs|unnamed-blue-legs
+unnamed-easy-21.png|Unnamed blue shirt|unnamed-blue-shirt
+unnamed-easy-22.png|Blue wizard hat|blue-wizard-hat
+unnamed-easy-23.png|Unnamed green skull helm|unnamed-green-skull-helm
+unnamed-elite-24.png|Unnamed brown cape|unnamed-brown-cape
+unnamed-elite-25.png|Unnamed sealed scroll|unnamed-sealed-scroll-25
+unnamed-elite-26.png|Unnamed sealed scroll|unnamed-sealed-scroll-26
+unnamed-elite-27.png|Unnamed sealed scroll|unnamed-sealed-scroll-27
+unnamed-elite-28.png|Unnamed sealed scroll|unnamed-sealed-scroll-28
+unnamed-elite-29.png|Unnamed sealed scroll|unnamed-sealed-scroll-29
+unnamed-elite-30.png|Unnamed sealed scroll|unnamed-sealed-scroll-30
+unnamed-elite-31.png|Unnamed sealed scroll|unnamed-sealed-scroll-31
+unnamed-elite-32.png|Unnamed sealed scroll|unnamed-sealed-scroll-32
+unnamed-elite-33.png|Unnamed purple spider|unnamed-purple-spider
+unnamed-elite-34.png|Unnamed purple figure|unnamed-purple-figure
+unnamed-elite-35.png|Unnamed purple helm|unnamed-purple-helm
+unnamed-elite-36.png|Unnamed blue full helm|unnamed-blue-full-helm
+unnamed-elite-37.png|Unnamed light blue helm|unnamed-light-blue-helm
+unnamed-elite-39.png|Unnamed blue mask|unnamed-blue-mask
+unnamed-elite-40.png|Unnamed brown staff|unnamed-brown-staff
+unnamed-elite-41.png|Unnamed blue boots|unnamed-blue-boots
+unnamed-elite-42.png|Unnamed horned helm|unnamed-horned-helm
+unnamed-elite-43.png|Unnamed white helm|unnamed-white-helm
+unnamed-elite-44.png|Unnamed white greathelm|unnamed-white-greathelm
+unnamed-elite-45.png|Unnamed brown horned helm|unnamed-brown-horned-helm
+unnamed-elite-46.png|Unnamed sealed pot|unnamed-sealed-pot
+unnamed-elite-47.png|Unnamed green vest|unnamed-green-vest
+unnamed-master-48.png|Unnamed rainbow orb|unnamed-rainbow-orb
+unnamed-master-49.png|Unnamed oil lamp|unnamed-oil-lamp
+unnamed-master-50.png|Unnamed supply crate|unnamed-supply-crate
+unnamed-master-51.png|Unnamed white robe|unnamed-white-robe
+unnamed-master-52.png|Unnamed quiver|unnamed-quiver
+unnamed-master-53.png|Unnamed gold ring|unnamed-gold-ring
+unnamed-master-54.png|Unnamed green crescent|unnamed-green-crescent
+unnamed-master-55.png|Unnamed green dragon helm|unnamed-green-dragon-helm
+unnamed-master-56.png|Unnamed blue dragon helm|unnamed-blue-dragon-helm
+unnamed-master-57.png|Unnamed pink dragon helm|unnamed-pink-dragon-helm
+unnamed-master-58.png|Unnamed blue horned helm|unnamed-blue-horned-helm
+unnamed-master-59.png|Unnamed yellow canoe|unnamed-yellow-canoe
+unnamed-master-60.png|Unnamed gold band|unnamed-gold-band
+unnamed-master-61.png|Unnamed round helm|unnamed-round-helm
+unnamed-master-62.png|Unnamed sword hilt|unnamed-sword-hilt
+unnamed-master-63.png|Unnamed rolled parchment|unnamed-rolled-parchment
+unnamed-master-64.png|Unnamed white helm|unnamed-white-helm-b
+unnamed-master-65.png|Unnamed tankard|unnamed-tankard
+unnamed-master-66.png|Unnamed horned skull helm|unnamed-horned-skull-helm
+unnamed-master-67.png|Unnamed dark greathelm|unnamed-dark-greathelm
+unnamed-master-68.png|Unnamed red and black figure|unnamed-red-black-figure
+unnamed-master-69.png|Unnamed purple potion|unnamed-purple-potion
+unnamed-master-70.png|Unnamed black and white shape|unnamed-black-white-shape
+unnamed-master-71.png|Unnamed red book|unnamed-red-book
+unnamed-master-72.png|Unnamed curved horn|unnamed-curved-horn

@@ -29,22 +29,24 @@ namespace Chest
 
         static void Latch()
         {
-            RewardLatch latch = new RewardLatch();
-            latch.MissesBeforeClose = 3;
-            Check(!latch.Unchanged("a"), "closed is not unchanged");
-            latch.Note("a");
-            Check(latch.Unchanged("a"), "same reward stays");
-            Check(!latch.Miss(), "one miss keeps it open");
-            latch.Touch();
-            latch.Note("b");
-            Check(latch.Unchanged("b"), "reroll replaces the pending reward");
-            Check(!latch.Unchanged("a"), "old roll is not the pending one");
-            Check(!latch.Miss(), "miss 1");
-            Check(!latch.Miss(), "miss 2");
-            Check(latch.Miss(), "third miss closes and counts");
-            Check(!latch.Miss(), "a closed panel does not count again");
-            latch.Note("b");
-            Check(latch.Miss() == false && latch.Miss() == false && latch.Miss(), "a new casket counts on its own close");
+            RewardSession session = new RewardSession();
+            session.MissesBeforeClose = 3;
+            Check(session.See(true, "a") == "opened", "the first window counts immediately");
+            Check(session.See(true, "a") == "none", "the same window is not a second casket");
+            Check(session.See(false, null) == "none", "one miss stays open");
+            Check(session.See(true, "b") == "replaced", "a reroll replaces the open casket");
+            Check(session.See(true, "b") == "none", "the new roll stays put");
+            Check(session.See(false, null) == "none" && session.See(false, null) == "none" && session.See(false, null) == "closed", "three misses close it");
+            Check(session.See(false, null) == "none", "a closed window does not count");
+            Check(session.See(true, "b") == "opened", "the next window is a new casket");
+            Rectangle game = new Rectangle(100, 80, 900, 600);
+            Rectangle placed = FloatingPanelLayout.Place(game, new Size(200, 120), new Point(800, 40), new Rectangle(0, 0, 2000, 1200));
+            Check(placed.X == 800 && placed.Y == 120 && placed.Right <= game.Right && placed.Bottom <= game.Bottom, "panel stays inside the client");
+            Check(FloatingPanelLayout.WantTopMost(true, false, true, false), "topmost while the game is in front");
+            Check(!FloatingPanelLayout.WantTopMost(true, false, false, false), "not topmost over another app");
+            Check(FloatingPanelLayout.Shown(true, false, false, true), "the panel stays while it is being used");
+            Check(!FloatingPanelLayout.Shown(true, true, true, true), "a minimised client hides the panel");
+            Check(StackText.Format(1089) == "1089" && StackText.Format(10000) == "10k" && StackText.Format(15500) == "15.5k" && StackText.Format(2500000) == "2.5M", "stack numbers use k and M");
         }
 
         static void Book()
@@ -65,6 +67,12 @@ namespace Chest
             LootBook empty = new LootBook(dir);
             empty.Load();
             Check(empty.Caskets == 0 && empty.Lines.Count == 0, "reset clears");
+            LootBook roll = new LootBook(dir);
+            roll.Commit(new LootLine[] { new LootLine { Id = "coins", Name = "Coins", Quantity = 100 } }, 5000);
+            roll.ReplaceLast(new LootLine[] { new LootLine { Id = "coins", Name = "Coins", Quantity = 5 } }, 50);
+            Check(roll.Caskets == 1 && roll.Lines.Count == 1 && roll.Lines[0].Quantity == 5 && roll.Value == 50, "a reroll replaces the logged casket");
+            Check(roll.UndoLast() && roll.Caskets == 0 && roll.Lines.Count == 0 && roll.Value == 0, "undo removes the last casket");
+            Check(!roll.UndoLast(), "a second undo does nothing");
             try { Directory.Delete(dir, true); } catch (Exception) { }
         }
 
@@ -89,6 +97,7 @@ namespace Chest
             List<Glyph> stack = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "stack.txt"));
             List<Glyph> value = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "value.txt"));
             Check(stack.Count >= 5 && value.Count >= 9, "digit templates load");
+            RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
             int[][] quantities = new int[][] {
                 new int[] { 1, 1, 1, 1, 2 },
                 new int[] { 1, 1, 1, 1, 2 },
@@ -119,7 +128,28 @@ namespace Chest
                 foreach (int q in quantities[i]) expect += (expect.Length == 0 ? "" : ",") + q;
                 Check(got == expect, "master-" + i + " quantities " + got + " wanted " + expect);
                 Check(shot.Value == values[i], "master-" + i + " value " + shot.Value + " wanted " + values[i]);
+                Check(RewardReader.TitleMatches(frame, panel), "master-" + i + " title is TRAIL COMPLETE");
                 if (i == 1) first = shot;
+            }
+            Frame titled = FramePng.Decode(Path.Combine(root, "fixtures", "master-1.png"));
+            Frame other = FramePng.Decode(Path.Combine(root, "fixtures", "master-4.png"));
+            Frame later = FramePng.Decode(Path.Combine(root, "fixtures", "master-5.png"));
+            if (titled != null && other != null && later != null)
+            {
+                Rectangle a = RewardReader.Find(titled);
+                Rectangle b = RewardReader.Find(other);
+                Rectangle c = RewardReader.Find(later);
+                string keyA = RewardReader.RerollKey(titled, a);
+                Check(keyA == RewardReader.RerollKey(FramePng.Decode(Path.Combine(root, "fixtures", "master-0.png")), RewardReader.Find(FramePng.Decode(Path.Combine(root, "fixtures", "master-0.png")))), "the same reroll state shares a key");
+                Check(RewardReader.RerollKey(other, b) != RewardReader.RerollKey(later, c), "a reroll button change is a new key");
+                Frame stripped = titled.Crop(new Rectangle(0, 0, titled.Width, titled.Height));
+                for (int y = a.Y + 4; y < a.Y + 28; y++)
+                    for (int x = a.X + 10; x < a.X + 170; x++)
+                    {
+                        int i = (y * stripped.Width + x) * 4;
+                        if (i >= 0 && i + 2 < stripped.Bgra.Length) { stripped.Bgra[i] = 0; stripped.Bgra[i + 1] = 0; stripped.Bgra[i + 2] = 40; }
+                    }
+                Check(!RewardReader.TitleMatches(stripped, a), "a red tab without TRAIL COMPLETE is ignored");
             }
             Frame plain = new Frame(new byte[800 * 400 * 4], 800, 400);
             Check(RewardReader.Find(plain).IsEmpty, "a blank frame is not a reward window");

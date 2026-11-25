@@ -23,6 +23,13 @@ namespace Chest
         [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out Rect rect);
         [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr window, ref PointStruct point);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, int flags);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")] static extern int GetWindowLong32(IntPtr window, int index);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")] static extern IntPtr GetWindowLongPtr64(IntPtr window, int index);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong")] static extern int SetWindowLong32(IntPtr window, int index, int value);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")] static extern IntPtr SetWindowLongPtr64(IntPtr window, int index, IntPtr value);
+        public const int SwpNoSize = 0x0001, SwpNoMove = 0x0002, SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010, SwpNoOwnerZOrder = 0x0200;
+        public static readonly IntPtr HwndTopMost = new IntPtr(-1), HwndNoTopMost = new IntPtr(-2);
         [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
         [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr context);
         [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
@@ -80,6 +87,28 @@ namespace Chest
             catch (EntryPointNotFoundException) { }
             catch (DllNotFoundException) { }
             return 96;
+        }
+
+        public static void SetOwner(IntPtr child, IntPtr owner)
+        {
+            if (child == IntPtr.Zero) return;
+            if (IntPtr.Size == 8) SetWindowLongPtr64(child, -8, owner);
+            else SetWindowLong32(child, -8, owner.ToInt32());
+        }
+
+        public static void PlaceNoZOrder(IntPtr window, Rectangle screen)
+        {
+            if (window == IntPtr.Zero || screen.Width < 1 || screen.Height < 1) return;
+            SetWindowPos(window, IntPtr.Zero, screen.X, screen.Y, screen.Width, screen.Height, SwpNoZOrder | SwpNoActivate | SwpNoOwnerZOrder);
+        }
+
+        public static void SetTopMostNoActivate(IntPtr window, bool top)
+        {
+            if (window == IntPtr.Zero) return;
+            int style = IntPtr.Size == 8 ? GetWindowLongPtr64(window, -20).ToInt32() : GetWindowLong32(window, -20);
+            bool already = (style & 0x00000008) != 0;
+            if (already == top) return;
+            SetWindowPos(window, top ? HwndTopMost : HwndNoTopMost, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate | SwpNoOwnerZOrder);
         }
     }
 

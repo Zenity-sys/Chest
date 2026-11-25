@@ -17,65 +17,103 @@ namespace Chest
         public bool Unknown;
     }
 
-    // The combined chest. One grid, gold frame, navy fill, like the reward panel.
+    // Items sit directly on the navy panel. The title stays put while the grid scrolls.
     internal sealed class ChestView : Panel
     {
         public ChestLayout Grid = new ChestLayout();
         public List<SlotView> Slots = new List<SlotView>();
+        const int Header = 34;
+        readonly ToolTip names = new ToolTip();
         public ChestView()
         {
-            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque | ControlStyles.ResizeRedraw, true);
             BackColor = KavrosTheme.Navy;
             AutoScroll = true;
+            DoubleBuffered = true;
+            names.InitialDelay = 400;
+            names.ReshowDelay = 100;
         }
         public void ShowSlots(List<SlotView> slots)
         {
             Slots = slots ?? new List<SlotView>();
             int columns = Math.Max(1, Grid.Columns);
-            int rows = Math.Max(1, (Slots.Count + columns - 1) / columns);
-            int cellW = Grid.Icon + Grid.Gap;
-            int cellH = Grid.Icon + Grid.NameHeight + Grid.Gap;
-            AutoScrollMinSize = new Size(Grid.Pad * 2 + columns * cellW, Grid.Pad * 2 + 36 + rows * cellH);
+            int rows = (Slots.Count + columns - 1) / columns;
+            int cell = Grid.Icon + Grid.Gap;
+            AutoScrollMinSize = new Size(Grid.Pad * 2 + columns * cell, Header + Grid.Pad + Math.Max(1, rows) * cell + Grid.Pad);
             Invalidate();
+        }
+        protected override void OnPaintBackground(PaintEventArgs e) { }
+        protected override void OnScroll(ScrollEventArgs se)
+        {
+            base.OnScroll(se);
+            Invalidate();
+        }
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            Invalidate();
+        }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            SlotView slot = Hit(e.Location);
+            string tip = slot == null ? "" : (string.IsNullOrEmpty(slot.Name) ? "" : slot.Name);
+            if (names.GetToolTip(this) != tip) names.SetToolTip(this, tip);
+        }
+        SlotView Hit(Point point)
+        {
+            int columns = Math.Max(1, Grid.Columns);
+            int cell = Grid.Icon + Grid.Gap;
+            int x = point.X - Grid.Pad;
+            int y = point.Y - Header - Grid.Pad - AutoScrollPosition.Y;
+            if (x < 0 || y < 0) return null;
+            int col = x / cell;
+            int row = y / cell;
+            if (col >= columns || (x % cell) >= Grid.Icon || (y % cell) >= Grid.Icon) return null;
+            int index = row * columns + col;
+            if (index < 0 || index >= Slots.Count) return null;
+            return Slots[index];
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.Clear(KavrosTheme.Navy);
-            g.TranslateTransform(AutoScrollPosition.X, AutoScrollPosition.Y);
-            Rectangle frame = new Rectangle(8, 8, Math.Max(40, ClientSize.Width - 16), Math.Max(40, Math.Max(ClientSize.Height, AutoScrollMinSize.Height) - 16));
-            using (Pen gold = new Pen(KavrosTheme.GoldEdge, 2)) g.DrawRectangle(gold, frame);
-            using (Brush tab = new SolidBrush(KavrosTheme.Tab)) g.FillRectangle(tab, frame.X + 14, frame.Y + 8, 150, 22);
-            TextRenderer.DrawText(g, "REWARDS", KavrosTheme.Display(11F), new Rectangle(frame.X + 14, frame.Y + 8, 150, 22), KavrosTheme.Gold, KavrosTheme.Tab, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            int columns = Math.Max(1, Grid.Columns);
+            int cell = Grid.Icon + Grid.Gap;
+            int scrollY = AutoScrollPosition.Y;
             if (Slots.Count == 0)
             {
-                TextRenderer.DrawText(g, "Open a casket. Rewards land here when the window closes.", KavrosTheme.Ui(9F, false), new Rectangle(frame.X + 20, frame.Y + 70, frame.Width - 40, 40), KavrosTheme.TextSoft, KavrosTheme.Navy, TextFormatFlags.HorizontalCenter | TextFormatFlags.WordBreak);
-                return;
+                using (Brush ink = new SolidBrush(KavrosTheme.TextSoft))
+                    g.DrawString("Open a casket.", KavrosTheme.Ui(9F, false), ink, new RectangleF(16, Header + 28, Math.Max(40, ClientSize.Width - 32), 40));
             }
-            int columns = Math.Max(1, Grid.Columns);
-            int cellW = Grid.Icon + Grid.Gap;
-            int cellH = Grid.Icon + Grid.NameHeight + Grid.Gap;
-            int originX = frame.X + Grid.Pad;
-            int originY = frame.Y + 40;
-            for (int i = 0; i < Slots.Count; i++)
+            else
             {
-                SlotView slot = Slots[i];
-                int x = originX + (i % columns) * cellW;
-                int y = originY + (i / columns) * cellH;
-                Rectangle box = new Rectangle(x, y, Grid.Icon, Grid.Icon);
-                using (Brush well = new SolidBrush(Color.FromArgb(10, 22, 32))) g.FillRectangle(well, box);
-                using (Pen edge = new Pen(Color.FromArgb(40, 70, 90))) g.DrawRectangle(edge, box);
-                if (slot.Image != null)
+                g.SetClip(new Rectangle(0, Header, ClientSize.Width, Math.Max(1, ClientSize.Height - Header)));
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                using (Brush shadow = new SolidBrush(Color.FromArgb(230, 8, 10, 14)))
+                using (Brush yellow = new SolidBrush(KavrosTheme.Quantity))
                 {
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                    g.DrawImage(slot.Image, box);
+                    Font qtyFont = KavrosTheme.Ui(8F, true);
+                    for (int i = 0; i < Slots.Count; i++)
+                    {
+                        SlotView slot = Slots[i];
+                        int x = Grid.Pad + (i % columns) * cell;
+                        int y = Header + Grid.Pad + (i / columns) * cell + scrollY;
+                        if (y > ClientSize.Height || y + Grid.Icon < Header) continue;
+                        if (slot.Image != null) g.DrawImage(slot.Image, new Rectangle(x, y, Grid.Icon, Grid.Icon));
+                        string qty = StackText.Format(slot.Quantity);
+                        float qx = x + 1;
+                        float qy = y + 1;
+                        g.DrawString(qty, qtyFont, shadow, qx + 1, qy + 1);
+                        g.DrawString(qty, qtyFont, yellow, qx, qy);
+                    }
                 }
-                string qty = slot.Quantity.ToString();
-                TextRenderer.DrawText(g, qty, KavrosTheme.Ui(9F, true), new Rectangle(box.X + 2, box.Y + 1, box.Width - 4, 18), KavrosTheme.Quantity, TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPrefix);
-                Color nameColor = slot.Unknown ? KavrosTheme.TextSoft : KavrosTheme.Gold;
-                TextRenderer.DrawText(g, slot.Name, KavrosTheme.Ui(7.5F, false), new Rectangle(x, box.Bottom + 2, cellW - 4, Grid.NameHeight), nameColor, KavrosTheme.Navy, TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                g.ResetClip();
             }
+            using (Brush tab = new SolidBrush(KavrosTheme.Tab)) g.FillRectangle(tab, 0, 0, 168, 24);
+            using (Brush gold = new SolidBrush(KavrosTheme.Gold))
+                g.DrawString("Clue Rewards", KavrosTheme.Display(11F), gold, 10, 3);
         }
     }
 
@@ -88,7 +126,7 @@ namespace Chest
         readonly ChestView chest = new ChestView();
         readonly OpaqueButton restart = new OpaqueButton();
         readonly LootBook book;
-        readonly RewardLatch latch = new RewardLatch();
+        readonly RewardSession session = new RewardSession();
         readonly List<Glyph> stackGlyphs = new List<Glyph>();
         readonly List<Glyph> valueGlyphs = new List<Glyph>();
         List<IconRef> icons = new List<IconRef>();
@@ -98,10 +136,26 @@ namespace Chest
         List<GameWindow> clients = new List<GameWindow>();
         IntPtr selected = IntPtr.Zero;
         uint selectedPid;
+        readonly Panel titleBar = new Panel();
+        readonly Label heading = new Label();
+        readonly OpaqueButton collapse = new OpaqueButton();
+        readonly OpaqueButton closeButton = new OpaqueButton();
+        readonly OpaqueButton unknownFolder = new OpaqueButton();
+        readonly OpaqueButton undo = new OpaqueButton();
+        readonly System.Windows.Forms.Timer follow = new System.Windows.Forms.Timer();
         bool refreshing;
         bool resetArmed;
+        bool undoArmed;
+        bool collapsed;
+        bool dragging;
+        bool offsetReady;
+        bool topKnown;
+        bool topMost;
         DateTime resetArmedAt;
-        RewardShot pending;
+        DateTime undoArmedAt;
+        Point offset;
+        Point dragStart;
+        Point offsetAtDrag;
         volatile bool running = true;
         volatile bool saveRequested;
         volatile int clientEpoch;
@@ -114,24 +168,31 @@ namespace Chest
             assetPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets");
             if (!Directory.Exists(assetPath)) assetPath = Path.Combine(Directory.GetCurrentDirectory(), "assets");
             layout = ChestLayout.Load(Path.Combine(assetPath, "chest-layout.txt"));
-            latch.MissesBeforeClose = layout.MissesBeforeClose;
+            session.MissesBeforeClose = layout.MissesBeforeClose;
             dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Chest");
             book = new LootBook(dataRoot);
             book.Load();
+            LoadPanel();
             Text = "Chest";
             try { Icon = AppBranding.LoadIcon(); } catch (Exception) { }
-            ClientSize = new Size(layout.WindowWidth, layout.WindowHeight);
-            MinimumSize = new Size(640, 480);
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = true;
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.None;
-            BackColor = KavrosTheme.Bg;
+            DoubleBuffered = true;
+            BackColor = KavrosTheme.Navy;
             ForeColor = KavrosTheme.Text;
             Font = KavrosTheme.Ui(9F, false);
+            ClientSize = new Size(layout.WindowWidth, collapsed ? 32 : layout.WindowHeight);
             BuildChrome();
             stackGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "stack.txt")));
             valueGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "value.txt")));
             icons = IconLibrary.Load(Path.Combine(assetPath, "icons"), Path.Combine(assetPath, "icons", "catalog.txt"));
+            RewardReader.LoadTitle(Path.Combine(assetPath, "reward", "trail-title.png"));
             RefreshGrid();
+            follow.Interval = 50;
+            follow.Tick += Follow;
+            Resize += delegate { LayoutChrome(); };
             AppUpdates.Present = delegate(string message, bool error, string action, Action click)
             {
                 status.ForeColor = error ? Color.FromArgb(242, 180, 180) : KavrosTheme.TextSoft;
@@ -148,83 +209,196 @@ namespace Chest
                 watcher.IsBackground = true;
                 watcher.Name = "ChestWatch";
                 watcher.Start();
+                follow.Start();
                 AppUpdates.Check(this, false);
             };
             FormClosed += delegate
             {
                 running = false;
+                follow.Stop();
                 foreach (Bitmap bitmap in pictures.Values) bitmap.Dispose();
             };
         }
 
+        protected override bool ShowWithoutActivation { get { return true; } }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                parameters.ExStyle |= 0x80;
+                return parameters;
+            }
+        }
+
         void BuildChrome()
         {
-            Label title = new Label();
-            title.Text = "CHEST";
-            title.Font = KavrosTheme.Display(20F);
-            title.ForeColor = KavrosTheme.Gold;
-            title.SetBounds(20, 12, 220, 34);
-            Controls.Add(title);
+            titleBar.BackColor = KavrosTheme.TitleBar;
+            Controls.Add(titleBar);
+            heading.Text = "CHEST";
+            heading.Font = KavrosTheme.Display(13F);
+            heading.ForeColor = KavrosTheme.Gold;
+            heading.BackColor = KavrosTheme.TitleBar;
+            heading.SetBounds(12, 4, 90, 24);
+            titleBar.Controls.Add(heading);
             Label version = new Label();
-            version.Text = AppBranding.DisplayVersion + "   ·   Made by Zenity";
+            version.Text = AppBranding.DisplayVersion + "  ·  Zenity";
             version.Font = KavrosTheme.Ui(8F, false);
             version.ForeColor = KavrosTheme.TextFaint;
-            version.SetBounds(20, 44, 320, 18);
-            Controls.Add(version);
-            Label game = new Label();
-            game.Text = "Game window";
-            game.ForeColor = KavrosTheme.TextSoft;
-            game.SetBounds(20, 72, 110, 22);
-            Controls.Add(game);
+            version.BackColor = KavrosTheme.TitleBar;
+            version.SetBounds(104, 8, 180, 18);
+            titleBar.Controls.Add(version);
+            HookDrag(titleBar);
+            HookDrag(heading);
+            HookDrag(version);
+            collapse.Text = collapsed ? "+" : "-";
+            collapse.Click += delegate { SetCollapsed(!collapsed); };
+            titleBar.Controls.Add(collapse);
+            closeButton.Text = "x";
+            closeButton.Click += delegate { Close(); };
+            titleBar.Controls.Add(closeButton);
             windows.DropDownStyle = ComboBoxStyle.DropDownList;
-            windows.SetBounds(130, 68, 360, 28);
             KavrosTheme.StyleCombo(windows);
             windows.SelectedIndexChanged += delegate { if (!refreshing) Attach(); };
             Controls.Add(windows);
             OpaqueButton refresh = new OpaqueButton();
             refresh.Text = "Refresh";
-            refresh.SetBounds(500, 66, 90, 28);
             refresh.Click += delegate { RefreshWindows(); };
             Controls.Add(refresh);
             OpaqueButton capture = new OpaqueButton();
             capture.Text = "Save capture";
-            capture.SetBounds(600, 66, 120, 28);
             capture.Click += delegate { saveRequested = true; status.Text = "Saving a capture of the game window..."; };
             Controls.Add(capture);
-            status.SetBounds(20, 100, ClientSize.Width - 40, 22);
-            status.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
-            status.ForeColor = KavrosTheme.TextSoft;
+            status.ForeColor = KavrosTheme.TextFaint;
+            status.Font = KavrosTheme.Ui(8F, false);
             status.Text = "Looking for the game window.";
             Controls.Add(status);
             chest.Grid = layout;
-            chest.SetBounds(16, 128, ClientSize.Width - 32, ClientSize.Height - 196);
-            chest.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
             Controls.Add(chest);
-            totals.SetBounds(20, ClientSize.Height - 56, 460, 36);
-            totals.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-            totals.ForeColor = KavrosTheme.Gold;
-            totals.Font = KavrosTheme.Ui(10F, true);
+            totals.ForeColor = KavrosTheme.TextFaint;
+            totals.Font = KavrosTheme.Ui(8F, false);
             Controls.Add(totals);
+            unknownFolder.Text = "Unknown folder";
+            unknownFolder.Click += delegate { OpenUnknown(); };
+            Controls.Add(unknownFolder);
+            undo.Text = "Undo";
+            undo.Click += delegate { OnUndo(); };
+            Controls.Add(undo);
             OpaqueButton reset = new OpaqueButton();
             reset.Text = "Reset";
-            reset.Tone = ButtonTone.Primary;
-            reset.SetBounds(ClientSize.Width - 280, ClientSize.Height - 58, 90, 30);
-            reset.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             reset.Click += delegate { OnReset(); };
             Controls.Add(reset);
             OpaqueButton updates = new OpaqueButton();
-            updates.Text = "Check for updates";
-            updates.SetBounds(ClientSize.Width - 180, ClientSize.Height - 58, 150, 30);
-            updates.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            updates.Text = "Updates";
             updates.Click += delegate { AppUpdates.Check(this, true); };
             Controls.Add(updates);
             restart.Text = "Restart";
             restart.Tone = ButtonTone.Primary;
             restart.Visible = false;
-            restart.SetBounds(ClientSize.Width - 450, ClientSize.Height - 58, 90, 30);
-            restart.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             restart.Click += delegate { if (restartClick != null) restartClick(); };
             Controls.Add(restart);
+            LayoutChrome();
+        }
+
+        void HookDrag(Control control)
+        {
+            control.MouseDown += TitleDown;
+            control.MouseMove += TitleMove;
+            control.MouseUp += TitleUp;
+        }
+
+        void LayoutChrome()
+        {
+            int w = ClientSize.Width;
+            int h = ClientSize.Height;
+            titleBar.SetBounds(0, 0, w, 32);
+            collapse.SetBounds(w - 64, 4, 28, 24);
+            closeButton.SetBounds(w - 32, 4, 28, 24);
+            bool body = !collapsed;
+            windows.Visible = body;
+            status.Visible = body;
+            chest.Visible = body;
+            totals.Visible = body;
+            unknownFolder.Visible = body;
+            undo.Visible = body;
+            foreach (Control control in Controls)
+            {
+                if (control == titleBar) continue;
+                if (!body) control.Visible = false;
+            }
+            if (!body) return;
+            windows.Visible = true;
+            status.Visible = true;
+            chest.Visible = true;
+            totals.Visible = true;
+            unknownFolder.Visible = true;
+            undo.Visible = true;
+            windows.SetBounds(12, 40, Math.Max(80, w - 250), 26);
+            int right = w - 12;
+            foreach (Control control in Controls)
+            {
+                OpaqueButton button = control as OpaqueButton;
+                if (button == null || button == undo || button == unknownFolder || button == restart) continue;
+                if (button.Text == "Refresh") { right -= 78; button.SetBounds(right, 38, 74, 26); button.Visible = true; }
+                if (button.Text == "Save capture") { right -= 108; button.SetBounds(right, 38, 104, 26); button.Visible = true; }
+                if (button.Text == "Reset") { button.SetBounds(w - 12 - 64, h - 40, 64, 28); button.Visible = true; }
+                if (button.Text == "Updates") { button.SetBounds(w - 12 - 64 - 8 - 80, h - 40, 80, 28); button.Visible = true; }
+            }
+            restart.SetBounds(w - 12 - 64 - 8 - 80 - 8 - 80, h - 40, 80, 28);
+            undo.SetBounds(12, h - 40, 64, 28);
+            unknownFolder.SetBounds(84, h - 40, 130, 28);
+            status.SetBounds(12, 70, w - 24, 16);
+            totals.SetBounds(12, h - 58, w - 24, 16);
+            chest.SetBounds(8, 90, Math.Max(40, w - 16), Math.Max(40, h - 90 - 66));
+        }
+
+        void SetCollapsed(bool value)
+        {
+            collapsed = value;
+            collapse.Text = collapsed ? "+" : "-";
+            ClientSize = new Size(layout.WindowWidth, collapsed ? 32 : layout.WindowHeight);
+            LayoutChrome();
+            SavePanel();
+        }
+
+        void TitleDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            dragging = true;
+            dragStart = Cursor.Position;
+            offsetAtDrag = offset;
+            Control control = sender as Control;
+            if (control != null) control.Capture = true;
+        }
+
+        void TitleMove(object sender, MouseEventArgs e)
+        {
+            if (!dragging) return;
+            Point cursor = Cursor.Position;
+            int dx = cursor.X - dragStart.X;
+            int dy = cursor.Y - dragStart.Y;
+            bool exists = selected != IntPtr.Zero && Native.IsWindow(selected) && !Native.IsIconic(selected);
+            if (!exists)
+            {
+                Location = new Point(Location.X + cursor.X - dragStart.X, Location.Y + cursor.Y - dragStart.Y);
+                dragStart = cursor;
+                return;
+            }
+            offset = new Point(offsetAtDrag.X + dx, offsetAtDrag.Y + dy);
+            offsetReady = true;
+            Rectangle game = Native.ClientBounds(selected);
+            Rectangle desktop = Screen.FromRectangle(game).WorkingArea;
+            Native.PlaceNoZOrder(Handle, FloatingPanelLayout.Place(game, Size, offset, desktop));
+        }
+
+        void TitleUp(object sender, MouseEventArgs e)
+        {
+            if (!dragging) return;
+            dragging = false;
+            Control control = sender as Control;
+            if (control != null) control.Capture = false;
+            SavePanel();
         }
 
         void OnReset()
@@ -240,6 +414,41 @@ namespace Chest
             book.Reset();
             RefreshGrid();
             status.Text = "Chest cleared.";
+        }
+
+        void OnUndo()
+        {
+            if (book.Last == null)
+            {
+                status.Text = "Nothing to undo.";
+                return;
+            }
+            if (!undoArmed || (DateTime.UtcNow - undoArmedAt).TotalSeconds > 4)
+            {
+                undoArmed = true;
+                undoArmedAt = DateTime.UtcNow;
+                status.Text = "Click Undo again to remove the last casket.";
+                return;
+            }
+            undoArmed = false;
+            if (!book.UndoLast()) return;
+            RefreshGrid();
+            status.Text = "Removed the last casket.";
+        }
+
+        void OpenUnknown()
+        {
+            try
+            {
+                Directory.CreateDirectory(book.UnknownDirectory);
+                Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = "\"" + book.UnknownDirectory + "\"", UseShellExecute = true });
+                status.Text = "Opened the unknown folder.";
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write(ex);
+                status.Text = "Could not open the unknown folder.";
+            }
         }
 
         void RefreshWindows()
@@ -268,7 +477,8 @@ namespace Chest
             GameWindow window = windows.SelectedItem as GameWindow;
             selected = window == null ? IntPtr.Zero : window.Handle;
             selectedPid = window == null ? 0 : window.ProcessId;
-            latch.MissesBeforeClose = layout.MissesBeforeClose;
+            session.MissesBeforeClose = layout.MissesBeforeClose;
+            session.Reset();
             clientEpoch++;
             status.Text = window == null ? "Looking for the game window." : "Watching " + window.Display + ".";
         }
@@ -288,13 +498,12 @@ namespace Chest
             if (watchEpoch != clientEpoch)
             {
                 watchEpoch = clientEpoch;
-                if (pending != null) PostCommit(pending);
-                latch.Reset();
+                session.Reset();
             }
             IntPtr handle = selected;
             if (handle == IntPtr.Zero || !Native.IsWindow(handle))
             {
-                if (latch.Miss() && pending != null) PostCommit(pending);
+                session.See(false, null);
                 return;
             }
             if (Native.IsIconic(handle)) return;
@@ -311,44 +520,22 @@ namespace Chest
                 catch (InvalidOperationException) { }
             }
             Rectangle local = RewardReader.Find(frame);
-            if (local.IsEmpty)
+            bool titled = !local.IsEmpty && RewardReader.TitleMatches(frame, local);
+            if (!titled)
             {
-                if (latch.Miss() && pending != null) PostCommit(pending);
-                return;
-            }
-            string quick = RewardReader.Fingerprint(frame, local);
-            if (latch.Unchanged(quick + (pending == null ? "" : ":" + pending.Value)))
-            {
-                latch.Touch();
+                session.See(false, null);
                 return;
             }
             RewardShot shot = RewardReader.Read(frame, local, stackGlyphs, valueGlyphs);
-            if (shot.Items.Count == 0)
-            {
-                if (latch.Miss() && pending != null) PostCommit(pending);
-                return;
-            }
-            latch.Note(quick + ":" + shot.Value);
-            pending = shot;
-            try
-            {
-                BeginInvoke(new Action(delegate
-                {
-                    status.Text = "Casket open. " + shot.Items.Count + " items, value " + Format(shot.Value) + ". Counted when it closes.";
-                }));
-            }
+            if (shot.Items.Count == 0) return;
+            string action = session.See(true, RewardReader.RerollKey(frame, local));
+            if (action == "none" || action == "closed") return;
+            bool replace = action == "replaced";
+            try { BeginInvoke(new Action(delegate { Apply(shot, replace); })); }
             catch (InvalidOperationException) { }
         }
 
-        void PostCommit(RewardShot shot)
-        {
-            pending = null;
-            RewardShot commit = shot;
-            try { BeginInvoke(new Action(delegate { Apply(commit); })); }
-            catch (InvalidOperationException) { }
-        }
-
-        void Apply(RewardShot shot)
+        void Apply(RewardShot shot, bool replace)
         {
             if (IsDisposed || shot == null) return;
             List<LootLine> lines = new List<LootLine>();
@@ -375,9 +562,10 @@ namespace Chest
                 }
                 lines.Add(line);
             }
-            book.Commit(lines, shot.Value);
+            if (replace) book.ReplaceLast(lines, shot.Value);
+            else book.Commit(lines, shot.Value);
             RefreshGrid();
-            status.Text = "Logged a casket. " + lines.Count + " items, value " + Format(shot.Value) + ".";
+            status.Text = (replace ? "Updated the open casket. " : "Logged a casket. ") + lines.Count + " items, value " + Format(shot.Value) + ".";
         }
 
         void RefreshGrid()
@@ -393,7 +581,7 @@ namespace Chest
                 slots.Add(slot);
             }
             chest.ShowSlots(slots);
-            totals.Text = "Caskets opened  " + book.Caskets + "      Reward value  " + Format(book.Value);
+            totals.Text = book.Caskets + " caskets   ·   " + Format(book.Value);
         }
 
         Bitmap PictureFor(LootLine line)
@@ -447,6 +635,84 @@ namespace Chest
         static string Format(long value)
         {
             return value.ToString("N0");
+        }
+
+        void Follow(object sender, EventArgs e)
+        {
+            if (IsDisposed || dragging) return;
+            bool exists = selected != IntPtr.Zero && Native.IsWindow(selected);
+            if (!exists)
+            {
+                try { if (IsHandleCreated) Native.SetOwner(Handle, IntPtr.Zero); }
+                catch (Exception) { }
+                topKnown = false;
+                if (!Visible) Show();
+                return;
+            }
+            bool minimised = Native.IsIconic(selected);
+            bool gameFront = WindowLocator.IsForeground(selected);
+            IntPtr front = Native.GetForegroundWindow();
+            bool panelFront = front == Handle || ContainsFocus || (IsHandleCreated && Native.GetAncestor(front, Native.GaRoot) == Handle);
+            if (!FloatingPanelLayout.Shown(true, minimised, gameFront, panelFront))
+            {
+                if (Visible) Hide();
+                topKnown = false;
+                return;
+            }
+            try { if (IsHandleCreated) Native.SetOwner(Handle, selected); }
+            catch (Exception) { }
+            Rectangle game = Native.ClientBounds(selected);
+            if (!offsetReady && game.Width > 0)
+            {
+                offset = new Point(Math.Max(8, game.Width - Width - 16), 40);
+                offsetReady = true;
+            }
+            Rectangle desktop = Screen.FromRectangle(game).WorkingArea;
+            Rectangle place = FloatingPanelLayout.Place(game, Size, offset, desktop);
+            if (Bounds != place) Native.PlaceNoZOrder(Handle, place);
+            if (!Visible) Show();
+            bool want = FloatingPanelLayout.WantTopMost(true, minimised, gameFront, panelFront);
+            if (!topKnown || want != topMost)
+            {
+                Native.SetTopMostNoActivate(Handle, want);
+                topMost = want;
+                topKnown = true;
+            }
+        }
+
+        string PanelPath { get { return Path.Combine(dataRoot, "panel.txt"); } }
+
+        void LoadPanel()
+        {
+            try
+            {
+                if (!File.Exists(PanelPath)) return;
+                foreach (string line in File.ReadAllLines(PanelPath))
+                {
+                    string[] parts = line.Split('\t');
+                    if (parts.Length == 2 && parts[0] == "collapsed") collapsed = parts[1] == "true";
+                    int x, y;
+                    if (parts.Length == 3 && parts[0] == "offset" && int.TryParse(parts[1], out x) && int.TryParse(parts[2], out y))
+                    {
+                        offset = new Point(x, y);
+                        offsetReady = true;
+                    }
+                }
+            }
+            catch (Exception ex) { CrashLog.Write(ex); }
+        }
+
+        void SavePanel()
+        {
+            try
+            {
+                Directory.CreateDirectory(dataRoot);
+                File.WriteAllLines(PanelPath, new string[] {
+                    "collapsed\t" + (collapsed ? "true" : "false"),
+                    "offset\t" + offset.X + "\t" + offset.Y
+                });
+            }
+            catch (Exception ex) { CrashLog.Write(ex); }
         }
     }
 }

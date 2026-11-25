@@ -107,6 +107,14 @@ namespace Chest
 
         public static bool IsClient(GameWindow window) { return Score(window) >= 100; }
 
+        public static bool IsForeground(IntPtr game)
+        {
+            if (game == IntPtr.Zero) return false;
+            IntPtr foreground = Native.GetForegroundWindow();
+            if (foreground == IntPtr.Zero) return false;
+            return foreground == game || Native.GetAncestor(foreground, Native.GaRoot) == game;
+        }
+
         public static List<GameWindow> Clients(IEnumerable<GameWindow> windows)
         {
             List<GameWindow> clients = new List<GameWindow>();

@@ -14,12 +14,19 @@ namespace Chest
         public bool Unknown;
     }
 
+    internal sealed class LootCommit
+    {
+        public long Value;
+        public readonly List<LootLine> Items = new List<LootLine>();
+    }
+
     // One combined chest. A commit is the reward that was on screen when the
     // panel closed, after any rerolls.
     internal sealed class LootBook
     {
         public int Caskets;
         public long Value;
+        public LootCommit Last;
         public readonly List<LootLine> Lines = new List<LootLine>();
         readonly string root;
 
@@ -41,21 +48,40 @@ namespace Chest
         public void Commit(IList<LootLine> items, long value)
         {
             if (items == null || items.Count == 0) return;
-            foreach (LootLine item in items)
-            {
-                LootLine line = null;
-                foreach (LootLine existing in Lines)
-                    if (existing.Id == item.Id) { line = existing; break; }
-                if (line == null)
-                {
-                    line = new LootLine { Id = item.Id, Name = item.Name, Unknown = item.Unknown };
-                    Lines.Add(line);
-                }
-                line.Quantity += item.Quantity;
-            }
+            Add(items);
             Caskets++;
             Value += value;
+            Last = Snapshot(items, value);
             Save();
+        }
+
+        // Same open window, new reroll: swap the previous items for these.
+        public void ReplaceLast(IList<LootLine> items, long value)
+        {
+            if (Last == null)
+            {
+                Commit(items, value);
+                return;
+            }
+            Subtract(Last.Items);
+            Value -= Last.Value;
+            if (Value < 0) Value = 0;
+            Add(items);
+            Value += value;
+            Last = Snapshot(items, value);
+            Save();
+        }
+
+        public bool UndoLast()
+        {
+            if (Last == null) return false;
+            Subtract(Last.Items);
+            if (Caskets > 0) Caskets--;
+            Value -= Last.Value;
+            if (Value < 0) Value = 0;
+            Last = null;
+            Save();
+            return true;
         }
 
         public void Reset()
@@ -63,7 +89,50 @@ namespace Chest
             Lines.Clear();
             Caskets = 0;
             Value = 0;
+            Last = null;
             Save();
+        }
+
+        void Add(IList<LootLine> items)
+        {
+            foreach (LootLine item in items)
+            {
+                LootLine line = Find(item.Id);
+                if (line == null)
+                {
+                    line = new LootLine { Id = item.Id, Name = item.Name, Unknown = item.Unknown };
+                    Lines.Add(line);
+                }
+                line.Quantity += item.Quantity;
+            }
+        }
+
+        void Subtract(IList<LootLine> items)
+        {
+            if (items == null) return;
+            foreach (LootLine item in items)
+            {
+                LootLine line = Find(item.Id);
+                if (line == null) continue;
+                line.Quantity -= item.Quantity;
+                if (line.Quantity <= 0) Lines.Remove(line);
+            }
+        }
+
+        LootLine Find(string id)
+        {
+            foreach (LootLine existing in Lines)
+                if (existing.Id == id) return existing;
+            return null;
+        }
+
+        static LootCommit Snapshot(IList<LootLine> items, long value)
+        {
+            LootCommit commit = new LootCommit();
+            commit.Value = value;
+            foreach (LootLine item in items)
+                commit.Items.Add(new LootLine { Id = item.Id, Name = item.Name, Quantity = item.Quantity, Unknown = item.Unknown });
+            return commit;
         }
 
         public void Save()
