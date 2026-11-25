@@ -13,7 +13,7 @@ namespace Chest
         {
             get
             {
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Chest", "crash.log");
+                return Path.Combine(AppPaths.DataRoot, "crash.log");
             }
         }
 

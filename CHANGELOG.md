@@ -1,3 +1,11 @@
+## 0.4.1
+
+- A casket is logged as soon as TRAIL COMPLETE is on screen. Other red panels no longer block it.
+- The same item is one stack. Each icon shows a single count.
+- Crops lose the slot tile behind them. Clean sprites stay crisp.
+- Checking for updates downloads the new version and restarts.
+- Saved rewards sit outside the install folder so Setup can replace the program.
+
 ## 0.4.0
 
 - A new casket is counted unless REROLL REWARD (n) drops by exactly one on the same window. n staying the same or going up is not a reroll.

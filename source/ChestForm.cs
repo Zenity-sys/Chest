@@ -15,6 +15,7 @@ namespace Chest
         public long Quantity;
         public Bitmap Image;
         public bool Unknown;
+        public byte[] Look;
     }
 
     // The chest itself. Icons sit on the panel. Only the icon area scrolls, and only vertically.
@@ -133,6 +134,9 @@ namespace Chest
         readonly List<Glyph> valueGlyphs = new List<Glyph>();
         List<IconRef> icons = new List<IconRef>();
         readonly Dictionary<string, Bitmap> pictures = new Dictionary<string, Bitmap>();
+        readonly List<byte[]> looks = new List<byte[]>();
+        readonly List<string> lookIds = new List<string>();
+        readonly List<string> lookNames = new List<string>();
         readonly string assetPath;
         readonly string dataRoot;
         List<GameWindow> clients = new List<GameWindow>();
@@ -169,7 +173,7 @@ namespace Chest
             if (!Directory.Exists(assetPath)) assetPath = Path.Combine(Directory.GetCurrentDirectory(), "assets");
             layout = ChestLayout.Load(Path.Combine(assetPath, "chest-layout.txt"));
             session.MissesBeforeClose = layout.MissesBeforeClose;
-            dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Chest");
+            dataRoot = AppPaths.DataRoot;
             book = new LootBook(dataRoot);
             book.Load();
             LoadPanel();
@@ -220,6 +224,20 @@ namespace Chest
                 follow.Stop();
                 foreach (Bitmap bitmap in pictures.Values) bitmap.Dispose();
             };
+        }
+
+        protected override void WndProc(ref Message message)
+        {
+            // Let an installer or a restart close this process immediately,
+            // even while the panel is hidden behind another window.
+            if (message.Msg == 0x0010 || message.Msg == 0x0011 || message.Msg == 0x0016)
+            {
+                running = false;
+                if (message.Msg == 0x0011) message.Result = new IntPtr(1);
+                Close();
+                return;
+            }
+            base.WndProc(ref message);
         }
 
         protected override bool ShowWithoutActivation { get { return true; } }
@@ -534,30 +552,56 @@ namespace Chest
                 byte[] pixels = item.Bgra;
                 int pw = item.Width, ph = item.Height;
                 if (Noted.LooksNoted(pixels, pw, ph)) pixels = Noted.WithoutPaper(pixels, pw, ph);
-                IconHit hit = IconLibrary.Match(icons, pixels, pw, ph, layout.IconMatch);
+                byte[] cleaned = Noted.CleanForDisplay(pixels, pw, ph);
+                IconHit hit = IconLibrary.Match(icons, cleaned, pw, ph, layout.IconMatch);
+                byte[] sig = IconLibrary.Signature(cleaned, pw, ph);
                 line.Quantity = item.Quantity;
+                int knownLook = FindLook(sig);
                 if (hit.Known)
                 {
                     line.Id = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
                     line.Name = hit.Name;
                 }
+                else if (knownLook >= 0)
+                {
+                    line.Id = lookIds[knownLook];
+                    line.Name = lookNames[knownLook];
+                    line.Unknown = line.Id.StartsWith("item-");
+                }
                 else
                 {
-                    string hash = IconLibrary.HashCrop(pixels, pw, ph);
-                    line.Id = "unknown-" + hash;
+                    string hash = IconLibrary.HashCrop(cleaned, pw, ph);
+                    line.Id = "item-" + hash;
                     line.Name = "Unknown";
                     line.Unknown = true;
                     string file = Path.Combine(book.UnknownDirectory, hash + ".png");
                     if (!File.Exists(file))
-                        FramePng.Save(new Frame(pixels, pw, ph), file);
-                    Remember(line.Id, new Frame(pixels, pw, ph));
+                        FramePng.Save(new Frame(cleaned, pw, ph), file);
+                    Remember(line.Id, new Frame(cleaned, pw, ph));
                 }
+                RememberLook(line.Id, line.Name, sig);
                 lines.Add(line);
             }
             if (replace) book.ReplaceLast(lines, shot.Value);
             else book.Commit(lines, shot.Value);
             RefreshGrid();
             status.Text = (replace ? "Updated the open casket. " : "Logged a casket. ") + lines.Count + " items, value " + Format(shot.Value) + ".";
+        }
+
+        int FindLook(byte[] sig)
+        {
+            for (int i = 0; i < looks.Count; i++)
+                if (IconLibrary.SameLook(looks[i], sig)) return i;
+            return -1;
+        }
+
+        void RememberLook(string id, string name, byte[] sig)
+        {
+            for (int i = 0; i < lookIds.Count; i++)
+                if (lookIds[i] == id) { looks[i] = sig; lookNames[i] = name; return; }
+            looks.Add(sig);
+            lookIds.Add(id);
+            lookNames.Add(name);
         }
 
         void RefreshGrid()

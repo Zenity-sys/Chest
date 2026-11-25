@@ -125,23 +125,19 @@ namespace Chest
                         {
                             int dw = slot.Image.Width;
                             int dh = slot.Image.Height;
+                            g.InterpolationMode = InterpolationMode.NearestNeighbor;
                             if (dw > icon || dh > icon)
                             {
                                 float scale = Math.Min((float)icon / dw, (float)icon / dh);
-                                dw = Math.Max(1, (int)(dw * scale));
-                                dh = Math.Max(1, (int)(dh * scale));
-                                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                                dw = Math.Max(1, (int)Math.Round(dw * scale));
+                                dh = Math.Max(1, (int)Math.Round(dh * scale));
                             }
-                            else g.InterpolationMode = InterpolationMode.NearestNeighbor;
-                            int ix = x + (icon - dw) / 2;
-                            int iy = y + 10 + Math.Max(0, (icon - dh) / 2);
+                            int ix = x + Math.Max(0, (icon - dw) / 2);
+                            int iy = y + 9;
                             g.DrawImage(slot.Image, new Rectangle(ix, iy, dw, dh));
                         }
                         string qty = StackText.Format(slot.Quantity);
-                        g.DrawString(qty, qtyFont, shadow, x + 1, y);
-                        g.DrawString(qty, qtyFont, shadow, x - 1, y);
-                        g.DrawString(qty, qtyFont, shadow, x, y + 1);
-                        g.DrawString(qty, qtyFont, shadow, x, y - 1);
+                        g.DrawString(qty, qtyFont, shadow, x + 1, y + 1);
                         g.DrawString(qty, qtyFont, yellow, x, y);
                     }
                 }

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Windows.Forms;
 
 namespace Chest
@@ -14,6 +15,7 @@ namespace Chest
             NetSecurity.EnableModernTls();
             if (args.Length > 0 && args[0] == "--test")
                 return Tests.Run(args.Length > 1 ? args[1] : null);
+            AppPaths.Prepare();
             try { AppUpdates.Start(); }
             catch (Exception startup) { CrashLog.Write(startup); }
             try { Native.SetProcessDpiAwarenessContext(new IntPtr(-4)); }

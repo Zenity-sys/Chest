@@ -65,8 +65,8 @@ namespace Chest
 
         static void BuildSamples(IconRef icon)
         {
-            for (int y = 0; y < 32; y++)
-                for (int x = 0; x < 32; x++)
+            for (int y = 0; y < 32; y += 2)
+                for (int x = 0; x < 32; x += 2)
                 {
                     int sx = x * icon.Width / 32;
                     int sy = y * icon.Height / 32;
@@ -100,7 +100,7 @@ namespace Chest
                 }
             foreach (IconRef icon in icons)
             {
-                if (icon.Samples.Count < 40) continue;
+                if (icon.Samples.Count < 12) continue;
                 int sad = 0, n = 0;
                 for (int s = 0; s < icon.Samples.Count; s += 5)
                 {
@@ -126,6 +126,45 @@ namespace Chest
             hit.Known = hit.Score >= minimum && hit.Score - hit.Second >= 0.03;
             if (!hit.Known) { hit.Name = "Unknown"; hit.Group = ""; }
             return hit;
+        }
+
+        public static byte[] Signature(byte[] bgra, int width, int height)
+        {
+            byte[] sig = new byte[8 * 8 * 3];
+            int[] weight = new int[64];
+            if (bgra == null || width < 2 || height < 2) return sig;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    int o = (y * width + x) * 4;
+                    if (bgra[o + 3] < 128) continue;
+                    int sx = x * 8 / width;
+                    int sy = y * 8 / height;
+                    if (sx > 7) sx = 7;
+                    if (sy > 7) sy = 7;
+                    int cell = sy * 8 + sx;
+                    int i = cell * 3;
+                    sig[i] = (byte)((sig[i] * weight[cell] + bgra[o + 2]) / (weight[cell] + 1));
+                    sig[i + 1] = (byte)((sig[i + 1] * weight[cell] + bgra[o + 1]) / (weight[cell] + 1));
+                    sig[i + 2] = (byte)((sig[i + 2] * weight[cell] + bgra[o]) / (weight[cell] + 1));
+                    weight[cell]++;
+                }
+            return sig;
+        }
+
+        public static bool SameLook(byte[] left, byte[] right)
+        {
+            if (left == null || right == null || left.Length < 192 || right.Length < 192) return false;
+            int sad = 0, n = 0;
+            for (int i = 0; i < 192; i += 3)
+            {
+                int l = left[i] + left[i + 1] + left[i + 2];
+                int r = right[i] + right[i + 1] + right[i + 2];
+                if (l < 18 && r < 18) continue;
+                sad += Math.Abs(left[i] - right[i]) + Math.Abs(left[i + 1] - right[i + 1]) + Math.Abs(left[i + 2] - right[i + 2]);
+                n++;
+            }
+            return n >= 4 && sad < n * 48;
         }
 
         public static string HashCrop(byte[] bgra, int width, int height)

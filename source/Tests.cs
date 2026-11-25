@@ -25,6 +25,7 @@ namespace Chest
             Fixtures(root);
             Preview(root);
             RealRewards(root);
+            Pipeline(root);
             Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
             return failed == 0 ? 0 : 1;
         }
@@ -262,6 +263,46 @@ namespace Chest
             Check(true, "grid preview drawn");
         }
 
+        static void Pipeline(string root)
+        {
+            RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
+            List<Glyph> stack = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "stack.txt"));
+            List<Glyph> value = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "value.txt"));
+            string dir = Path.Combine(Path.GetTempPath(), "chest-pipe-" + Guid.NewGuid().ToString("N"));
+            LootBook book = new LootBook(dir);
+            RewardSession session = new RewardSession();
+            session.MissesBeforeClose = 3;
+            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            long first = 0;
+            for (int i = 0; i < 6; i++)
+            {
+                if (i == 1) first = clock.ElapsedMilliseconds;
+                Frame frame = FramePng.Decode(Path.Combine(root, "fixtures", "master-" + i + ".png"));
+                Check(frame != null, "pipeline load master-" + i);
+                if (frame == null) continue;
+                Rectangle panel = RewardReader.Find(frame);
+                Check(!panel.IsEmpty && RewardReader.TitleMatches(frame, panel), "pipeline sees TRAIL COMPLETE in master-" + i);
+                if (panel.IsEmpty) continue;
+                RewardShot shot = RewardReader.Read(frame, panel, stack, value);
+                Check(shot.Items.Count > 0, "pipeline reads items in master-" + i + " (" + shot.Items.Count + ")");
+                if (i > 0)
+                {
+                    session.See(false, -1, null);
+                    session.See(false, -1, null);
+                    session.See(false, -1, null);
+                }
+                string action = session.See(true, RewardReader.RerollCount(frame, panel), shot.Fingerprint);
+                Check(action == "opened", "pipeline logs master-" + i + " as a new casket (" + action + ")");
+                if (action == "opened")
+                    book.Commit(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
+            }
+            clock.Stop();
+            Check(book.Caskets == 6, "pipeline logged six caskets (" + book.Caskets + ")");
+            Check(first > 0 && first < 800, "full client master-0 is read in " + first + " ms");
+            Check(clock.ElapsedMilliseconds < 2500, "all six reward shots are read in " + clock.ElapsedMilliseconds + " ms");
+            try { Directory.Delete(dir, true); } catch (Exception) { }
+        }
+
         static void RealRewards(string root)
         {
             List<IconRef> icons = IconLibrary.Load(Path.Combine(root, "assets", "icons"), Path.Combine(root, "assets", "icons", "catalog.txt"));
@@ -283,17 +324,14 @@ namespace Chest
                 if (step < 3)
                 {
                     stepValue[step] = shot.Value;
-                    foreach (SeenItem item in shot.Items) steps[step].Add(Shown(icons, item, out named, out unknown));
+                    foreach (SeenItem item in shot.Items) Absorb(steps[step], Shown(icons, item, out named, out unknown));
                     step++;
                 }
                 foreach (SeenItem item in shot.Items)
                 {
                     int ignoreA = 0, ignoreB = 0;
-                    SlotView slot = Shown(icons, item, out ignoreA, out ignoreB);
-                    if (slot.Image != null) all.Add(slot);
-                    if (all.Count >= 18) break;
+                    Absorb(all, Shown(icons, item, out ignoreA, out ignoreB));
                 }
-                if (all.Count >= 18) break;
             }
             Check(all.Count >= 5, "real reward crops matched into the grid (" + all.Count + ")");
             SaveFace(all, 210202, 6, Path.Combine(Path.GetTempPath(), "chest-preview", "real-grid.png"), "real grid");
@@ -304,13 +342,15 @@ namespace Chest
                 using (Graphics g = Graphics.FromImage(strip))
                 {
                     long running = 0;
+                    List<SlotView> carried = new List<SlotView>();
                     for (int i = 0; i < 3; i++)
                     {
                         running += stepValue[i];
+                        foreach (SlotView slot in steps[i]) Absorb(carried, slot);
                         using (Bitmap one = new Bitmap(640, 300))
                         using (Graphics face = Graphics.FromImage(one))
                         {
-                            ChestFace.Draw(face, new Rectangle(0, 0, 640, 300), steps[i], 0, running, i + 1, -1, -1, false, 32, 12, null, 0, 0);
+                            ChestFace.Draw(face, new Rectangle(0, 0, 640, 300), carried, 0, running, i + 1, -1, -1, false, 32, 12, null, 0, 0);
                             g.DrawImage(one, i * 640, 0);
                         }
                     }
@@ -356,7 +396,23 @@ namespace Chest
                 display = Noted.CleanForDisplay(pixels, item.Width, item.Height);
             }
             slot.Image = BitmapOf(display, dw, dh);
+            slot.Look = IconLibrary.Signature(Noted.CleanForDisplay(pixels, item.Width, item.Height), item.Width, item.Height);
             return slot;
+        }
+
+        static void Absorb(List<SlotView> slots, SlotView slot)
+        {
+            if (slot == null || slot.Image == null) return;
+            foreach (SlotView have in slots)
+            {
+                bool sameName = slot.Name != "Unknown" && have.Name == slot.Name;
+                if (sameName || IconLibrary.SameLook(have.Look, slot.Look))
+                {
+                    have.Quantity += slot.Quantity;
+                    return;
+                }
+            }
+            slots.Add(slot);
         }
 
         static Bitmap BitmapOf(byte[] bgra, int width, int height)
@@ -405,8 +461,9 @@ namespace Chest
             string[] starts = new string[] { AppDomain.CurrentDomain.BaseDirectory, Directory.GetCurrentDirectory() };
             foreach (string start in starts)
             {
+                if (string.IsNullOrEmpty(start)) continue;
                 DirectoryInfo dir = new DirectoryInfo(start);
-                for (int i = 0; i < 6 && dir != null; i++, dir = dir.Parent)
+                for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
                     if (File.Exists(Path.Combine(dir.FullName, "fixtures", "master-1.png"))) return dir.FullName;
             }
             return null;
