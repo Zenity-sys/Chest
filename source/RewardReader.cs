@@ -457,50 +457,102 @@ namespace Chest
             frame.Get(x, y, out r, out g, out b);
             return (r + g + b) / 3 > 145 && Math.Abs(r - g) < 60 && b > 110;
         }
+
+        static Frame titleTemplate;
+
+        public static void LoadTitle(string path)
+        {
+            titleTemplate = FramePng.Decode(path);
+        }
+
+        // The red tab alone is not enough. The gold title has to read TRAIL COMPLETE.
+        public static bool TitleMatches(Frame frame, Rectangle panel)
+        {
+            if (titleTemplate == null || frame == null || panel.Width < 170) return false;
+            long sad = 0;
+            int n = 0;
+            for (int y = 0; y < titleTemplate.Height; y++)
+                for (int x = 0; x < titleTemplate.Width; x++)
+                {
+                    int r1, g1, b1, r2, g2, b2;
+                    frame.Get(panel.X + 10 + x, panel.Y + 4 + y, out r1, out g1, out b1);
+                    titleTemplate.Get(x, y, out r2, out g2, out b2);
+                    sad += Math.Abs(r1 - r2) + Math.Abs(g1 - g2) + Math.Abs(b1 - b2);
+                    n++;
+                }
+            return n > 0 && sad / n < 18;
+        }
+
+        // Pixel signature of the reroll progress line and the reroll button.
+        // A change while the panel stays open is a reroll, not a new casket.
+        public static string RerollKey(Frame frame, Rectangle panel)
+        {
+            ulong hash = 1469598103934665603UL;
+            hash = HashBand(frame, panel, hash, 180, 340, 140, 156);
+            hash = HashBand(frame, panel, hash, 90, 300, 198, 220);
+            return hash.ToString("x16");
+        }
+
+        static ulong HashBand(Frame frame, Rectangle panel, ulong hash, int x0, int x1, int y0, int y1)
+        {
+            for (int y = panel.Y + y0; y < panel.Y + y1; y += 2)
+                for (int x = panel.X + x0; x < panel.X + x1; x += 2)
+                {
+                    int r, g, b;
+                    frame.Get(x, y, out r, out g, out b);
+                    hash = Mix(hash, (byte)(r / 24));
+                    hash = Mix(hash, (byte)(g / 24));
+                    hash = Mix(hash, (byte)(b / 24));
+                }
+            return hash;
+        }
     }
 
-    // While the panel stays open, a reroll only replaces the pending reward.
-    // The pending reward is counted once, when the panel closes.
-    internal sealed class RewardLatch
+    // opened: first sight of TRAIL COMPLETE, counted immediately.
+    // replaced: the reroll line or button changed while the panel stayed open.
+    // closed: the panel has been gone long enough that the next one is a new casket.
+    internal sealed class RewardSession
     {
         public int MissesBeforeClose = 3;
-        bool open;
+        public bool Open;
         int misses;
-        string fingerprint;
+        string rerollKey;
 
-        public bool Unchanged(string fingerprint)
+        public string See(bool visible, string key)
         {
-            return open && this.fingerprint == fingerprint;
-        }
-
-        public void Note(string fingerprint)
-        {
-            open = true;
+            if (!visible)
+            {
+                if (!Open) return "none";
+                misses++;
+                if (misses >= MissesBeforeClose)
+                {
+                    Open = false;
+                    misses = 0;
+                    rerollKey = null;
+                    return "closed";
+                }
+                return "none";
+            }
             misses = 0;
-            this.fingerprint = fingerprint;
+            if (!Open)
+            {
+                Open = true;
+                rerollKey = key;
+                return "opened";
+            }
+            if (key != rerollKey)
+            {
+                rerollKey = key;
+                return "replaced";
+            }
+            return "none";
         }
-
-        public void Touch() { misses = 0; }
 
         public void Reset()
         {
-            open = false;
+            Open = false;
             misses = 0;
-            fingerprint = null;
-        }
-
-        public bool Miss()
-        {
-            if (!open) return false;
-            misses++;
-            if (misses >= MissesBeforeClose)
-            {
-                open = false;
-                misses = 0;
-                fingerprint = null;
-                return true;
-            }
-            return false;
+            rerollKey = null;
         }
     }
 }

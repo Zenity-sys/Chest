@@ -8,10 +8,12 @@ It is a Windows .NET Framework 4.8 program. Download **Setup.exe** from [Release
 
 1. Start Kavros, then start Chest.
 2. Pick your game window. If you renamed it in Companion, that name shows up here.
-3. Open caskets. When the reward window is on screen, Chest reads the items and the reward value. A reroll replaces that reading. The casket is added when the window closes.
-4. The grid is one chest for every tier. Numbers on the icons are how many you have logged. **Caskets opened** and **Reward value** sit under the grid.
-5. **Reset** clears the chest. Click it twice so a misclick does not wipe a session.
-6. Totals are saved in `%LocalAppData%\Chest`.
+3. Open caskets. Chest counts a casket as soon as the TRAIL COMPLETE window is on screen. A reroll replaces that casket. Closing it and opening another counts a new one.
+4. The grid is one chest for every tier. Yellow numbers on the icons are how many you have logged. The line under the grid is the casket count and the reward value.
+5. **Undo** removes the last casket. **Reset** clears the chest. Click either one twice.
+6. **Unknown folder** opens the folder of icons Chest could not name. Totals are saved in `%LocalAppData%\Chest`.
+
+The panel sits on the game window you picked. It stays above that window, and it gets out of the way when another program is in front. Drag the title bar to move it. **−** collapses it to the title bar.
 
 Items Chest does not recognise yet show as **Unknown**. The cropped icon is saved in `%LocalAppData%\Chest\unknown`. Send those pictures back and they can be named in a later update.
 
@@ -27,15 +29,15 @@ Chest only looks at the screen. It does not read game memory and it does not cli
 
 ## This build
 
-v0.1.0 is tuned on a modern interface, about a 2560×1369 client, at 96 DPI. The reward panel in those shots is 396×239 and sits just left of centre. The reader looks for the red **TRAIL COMPLETE!** tab, the item strip, the yellow stack numbers, and the **CURRENT REWARD VALUE** line.
+v0.2.0 is tuned on a modern interface, about a 2560×1369 client, at 96 DPI. The reward panel in those shots is 396×239 and sits just left of centre. The reader checks the gold **TRAIL COMPLETE!** title, not just the red tab, then reads the item strip, the yellow stack numbers, and the reward value line.
 
 Stack digits confirmed from those shots are 1, 2, 3, 4 and 7. A stack that uses another digit is counted as 1 until a shot of that digit is added. Reward values use 0–7 and 9. An 8 in the value line is not templated yet.
 
-The icon folder is a starting set of common reward sprites. Kavros has its own items, so most master-casket icons will land in Unknown until real icons are named and dropped into `assets/icons` (file name, plus a line in `catalog.txt`: `file|Name|group`).
+The icon folder is seeded from common reward sprites and from collection log screenshots. Icons that could not be named confidently are stored with placeholder names. Kavros still has its own items, so anything new lands in Unknown until a crop is named in `assets/icons` (`file|Name|group` in `catalog.txt`).
 
 ## Releases
 
-Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag is `v0.1.0`. The window shows v0.1. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
+Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag is `v0.2.0`. The window shows v0.2. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
 
 - `Chest-win-Setup.exe`
 - `Chest-win-Portable.zip`

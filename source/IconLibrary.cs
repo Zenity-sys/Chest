@@ -66,6 +66,8 @@ namespace Chest
                     int sy = y * icon.Height / 32;
                     int i = (sy * icon.Width + sx) * 4;
                     if (icon.Bgra[i + 3] < 128) continue;
+                    int r = icon.Bgra[i + 2], g = icon.Bgra[i + 1], b = icon.Bgra[i];
+                    if (r > 210 && g > 175 && b < 70) continue;
                     if (y < 11) continue;
                     icon.Samples.Add(x);
                     icon.Samples.Add(y);
@@ -99,8 +101,16 @@ namespace Chest
                     n++;
                 }
                 double score = 1.0 - sad / (n * 765.0);
-                if (score > hit.Score) { hit.Second = hit.Score; hit.Score = score; hit.Name = icon.Name; hit.Group = icon.Group; }
-                else if (score > hit.Second) hit.Second = score;
+                string group = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
+                string best = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
+                if (score > hit.Score)
+                {
+                    if (!string.IsNullOrEmpty(best) && best != group) hit.Second = hit.Score;
+                    hit.Score = score;
+                    hit.Name = icon.Name;
+                    hit.Group = icon.Group;
+                }
+                else if (group != best && score > hit.Second) hit.Second = score;
             }
             hit.Known = hit.Score >= minimum && hit.Score - hit.Second >= 0.03;
             if (!hit.Known) { hit.Name = "Unknown"; hit.Group = ""; }
