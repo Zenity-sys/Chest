@@ -1,0 +1,10 @@
+*.exe
+*.dll
+*.pdb
+source/packages/
+publish/
+release-out/
+release-notes.md
+bin/
+obj/
+.vs/

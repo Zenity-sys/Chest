@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build
+        shell: pwsh
+        run: ./source/build.ps1
+
+      - name: Test
+        shell: pwsh
+        run: ./Chest.exe --test
+
+      - name: Install Velopack
+        shell: pwsh
+        run: dotnet tool install --global vpk --version 1.2.161
+
+      - name: Pack release
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./source/pack-release.ps1
+
+      - name: Release title
+        id: title
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -match '^v(\d+)\.(\d+)\.0$') { $name = "v$($Matches[1]).$($Matches[2])" } else { $name = $tag }
+          "name=$name" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.title.outputs.name }}
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
+          files: release-out/*

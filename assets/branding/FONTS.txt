@@ -1,0 +1,19 @@
+Embedded fonts (UI polish)
+==========================
+
+CinzelKavros-Regular.ttf
+  Static 700-weight instance of Cinzel (variable font), renamed to
+  "Cinzel Kavros" so it never clashes with an installed copy.
+  Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)
+  Licence: SIL Open Font License 1.1, see OFL-Cinzel.txt.
+
+OutfitKavros-Regular.ttf / OutfitKavros-Semibold.ttf
+  Static 400 and 600-weight instances of Outfit (variable font), renamed to
+  "Outfit Kavros" / "Outfit Kavros Semibold".
+  Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
+  Licence: SIL Open Font License 1.1, see OFL-Outfit.txt.
+
+The instances were generated with fontTools (varLib.instancer). They are
+embedded into KavrosClueHelper.exe by source/build.ps1 and loaded at runtime
+with PrivateFontCollection + AddFontMemResourceEx; nothing is installed. If
+loading fails the app falls back to Georgia / Segoe UI.

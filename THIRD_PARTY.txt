@@ -1,0 +1,26 @@
+FONTS
+=====
+Cinzel and Outfit are used under the SIL Open Font License 1.1.
+See assets/branding/OFL-Cinzel.txt, assets/branding/OFL-Outfit.txt and
+assets/branding/FONTS.txt. The files shipped here are the same static
+instances used by the Kavros clue helper, renamed so they do not clash
+with an installed copy.
+
+UPDATES
+=======
+Setup.exe checks GitHub Releases with Velopack 1.2.161
+(MIT, https://github.com/velopack/velopack).
+Release feeds are read with Newtonsoft.Json 13.0.4
+(MIT, https://www.newtonsoft.com/json).
+
+ITEM ICONS
+==========
+assets/icons holds reference item sprites used only to name rewards.
+They were retrieved from the public wiki image library for recognition.
+They are not relicensed by the MIT license on this program's code.
+Icons that do not match are stored as Unknown crops instead of being guessed.
+
+SCREENSHOT FIXTURES
+===================
+fixtures/ holds Kavros reward-window captures used by the tests.
+They are not copied into the installed program.
