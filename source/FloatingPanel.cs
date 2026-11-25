@@ -40,7 +40,7 @@ namespace Chest
         public static string Format(long quantity)
         {
             if (quantity >= 1000000) return Trim(quantity / 1000000.0) + "M";
-            if (quantity >= 10000) return Trim(quantity / 1000.0) + "k";
+            if (quantity >= 10000) return Trim(quantity / 1000.0) + "K";
             return quantity.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
