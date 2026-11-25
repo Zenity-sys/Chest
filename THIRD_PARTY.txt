@@ -16,7 +16,8 @@ Release feeds are read with Newtonsoft.Json 13.0.4
 ITEM ICONS
 ==========
 assets/icons holds reference item sprites used only to name rewards.
-They were retrieved from the public wiki image library for recognition.
+They were retrieved from the public wiki image library for the reward
+casket lists (easy, medium, hard, elite, and master).
 They are not relicensed by the MIT license on this program's code.
 Icons that do not match are stored as Unknown crops instead of being guessed.
 

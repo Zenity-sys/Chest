@@ -1,3 +1,11 @@
+## 0.3.0
+
+- The reward panel matches the in-game chest: gold CLUE REWARDS title, icons straight on the dark panel at their own size, and no boxes.
+- CURRENT REWARD VALUE is the sum of the value read from each casket. A reroll replaces that casket's value.
+- OPENED CLUES, UNDO, and UNKNOWN sit on the three buttons under the value line.
+- Noted rewards are counted and shown as the unnoted item.
+- Reward icons use the clean item sprites, including Ancient bones and Box of clue scrolls.
+
 ## 0.2.0
 
 - The loading screen uses the five casket icons.

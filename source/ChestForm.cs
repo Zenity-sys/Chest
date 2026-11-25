@@ -17,103 +17,105 @@ namespace Chest
         public bool Unknown;
     }
 
-    // Items sit directly on the navy panel. The title stays put while the grid scrolls.
+    // The chest itself. Icons sit on the panel. Only the icon area scrolls, and only vertically.
     internal sealed class ChestView : Panel
     {
         public ChestLayout Grid = new ChestLayout();
         public List<SlotView> Slots = new List<SlotView>();
-        const int Header = 34;
+        public long RewardValue;
+        public int Caskets;
+        public bool UndoArmed;
+        public Action UndoClicked;
+        public Action UnknownClicked;
+        int scroll, hot = -1, down = -1;
         readonly ToolTip names = new ToolTip();
         public ChestView()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque | ControlStyles.ResizeRedraw, true);
-            BackColor = KavrosTheme.Navy;
-            AutoScroll = true;
+            BackColor = Color.FromArgb(6, 14, 22);
             DoubleBuffered = true;
-            names.InitialDelay = 400;
-            names.ReshowDelay = 100;
+            names.InitialDelay = 300;
         }
         public void ShowSlots(List<SlotView> slots)
         {
             Slots = slots ?? new List<SlotView>();
-            int columns = Math.Max(1, Grid.Columns);
-            int rows = (Slots.Count + columns - 1) / columns;
-            int cell = Grid.Icon + Grid.Gap;
-            AutoScrollMinSize = new Size(Grid.Pad * 2 + columns * cell, Header + Grid.Pad + Math.Max(1, rows) * cell + Grid.Pad);
+            if (scroll > MaxScroll()) scroll = MaxScroll();
             Invalidate();
+        }
+        int IconSize { get { return Grid.Icon > ChestFace.IconBox ? ChestFace.IconBox : Math.Max(16, Grid.Icon); } }
+        int IconGap { get { return Grid.Gap < 4 ? ChestFace.IconGap : Grid.Gap; } }
+        int MaxScroll()
+        {
+            Rectangle grid, clues, undo, unknown;
+            ChestFace.Content(ClientRectangle, out grid, out clues, out undo, out unknown);
+            int columns = ChestFace.Columns(grid.Width, IconSize, IconGap);
+            int rows = Slots.Count == 0 ? 0 : (Slots.Count + columns - 1) / columns;
+            int content = rows * (IconSize + IconGap);
+            return Math.Max(0, content - grid.Height);
         }
         protected override void OnPaintBackground(PaintEventArgs e) { }
-        protected override void OnScroll(ScrollEventArgs se)
-        {
-            base.OnScroll(se);
-            Invalidate();
-        }
         protected override void OnMouseWheel(MouseEventArgs e)
         {
-            base.OnMouseWheel(e);
-            Invalidate();
+            int next = scroll - (e.Delta / 3);
+            if (next < 0) next = 0;
+            int max = MaxScroll();
+            if (next > max) next = max;
+            if (next != scroll) { scroll = next; Invalidate(); }
         }
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            SlotView slot = Hit(e.Location);
-            string tip = slot == null ? "" : (string.IsNullOrEmpty(slot.Name) ? "" : slot.Name);
+            int hit = ChestFace.Hit(ClientRectangle, e.Location);
+            if (hit != hot) { hot = hit; Invalidate(); }
+            SlotView slot = HitIcon(e.Location);
+            string tip = slot == null || string.IsNullOrEmpty(slot.Name) ? "" : slot.Name;
             if (names.GetToolTip(this) != tip) names.SetToolTip(this, tip);
         }
-        SlotView Hit(Point point)
+        protected override void OnMouseLeave(EventArgs e)
         {
-            int columns = Math.Max(1, Grid.Columns);
-            int cell = Grid.Icon + Grid.Gap;
-            int x = point.X - Grid.Pad;
-            int y = point.Y - Header - Grid.Pad - AutoScrollPosition.Y;
+            hot = -1;
+            down = -1;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left) return;
+            down = ChestFace.Hit(ClientRectangle, e.Location);
+            Invalidate();
+        }
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            int hit = ChestFace.Hit(ClientRectangle, e.Location);
+            int was = down;
+            down = -1;
+            Invalidate();
+            if (hit < 0 || hit != was) return;
+            if (hit == 1 && UndoClicked != null) UndoClicked();
+            if (hit == 2 && UnknownClicked != null) UnknownClicked();
+        }
+        SlotView HitIcon(Point point)
+        {
+            Rectangle grid, clues, undo, unknown;
+            ChestFace.Content(ClientRectangle, out grid, out clues, out undo, out unknown);
+            if (!grid.Contains(point)) return null;
+            int icon = IconSize, gap = IconGap, cell = icon + gap;
+            int columns = ChestFace.Columns(grid.Width, icon, gap);
+            int x = point.X - grid.X;
+            int y = point.Y - grid.Y + scroll;
             if (x < 0 || y < 0) return null;
             int col = x / cell;
             int row = y / cell;
-            if (col >= columns || (x % cell) >= Grid.Icon || (y % cell) >= Grid.Icon) return null;
+            if (col >= columns || (x % cell) >= icon || (y % cell) >= icon) return null;
             int index = row * columns + col;
             if (index < 0 || index >= Slots.Count) return null;
             return Slots[index];
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            Graphics g = e.Graphics;
-            g.Clear(KavrosTheme.Navy);
-            int columns = Math.Max(1, Grid.Columns);
-            int cell = Grid.Icon + Grid.Gap;
-            int scrollY = AutoScrollPosition.Y;
-            if (Slots.Count == 0)
-            {
-                using (Brush ink = new SolidBrush(KavrosTheme.TextSoft))
-                    g.DrawString("Open a casket.", KavrosTheme.Ui(9F, false), ink, new RectangleF(16, Header + 28, Math.Max(40, ClientSize.Width - 32), 40));
-            }
-            else
-            {
-                g.SetClip(new Rectangle(0, Header, ClientSize.Width, Math.Max(1, ClientSize.Height - Header)));
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                using (Brush shadow = new SolidBrush(Color.FromArgb(230, 8, 10, 14)))
-                using (Brush yellow = new SolidBrush(KavrosTheme.Quantity))
-                {
-                    Font qtyFont = KavrosTheme.Ui(8F, true);
-                    for (int i = 0; i < Slots.Count; i++)
-                    {
-                        SlotView slot = Slots[i];
-                        int x = Grid.Pad + (i % columns) * cell;
-                        int y = Header + Grid.Pad + (i / columns) * cell + scrollY;
-                        if (y > ClientSize.Height || y + Grid.Icon < Header) continue;
-                        if (slot.Image != null) g.DrawImage(slot.Image, new Rectangle(x, y, Grid.Icon, Grid.Icon));
-                        string qty = StackText.Format(slot.Quantity);
-                        float qx = x + 1;
-                        float qy = y + 1;
-                        g.DrawString(qty, qtyFont, shadow, qx + 1, qy + 1);
-                        g.DrawString(qty, qtyFont, yellow, qx, qy);
-                    }
-                }
-                g.ResetClip();
-            }
-            using (Brush tab = new SolidBrush(KavrosTheme.Tab)) g.FillRectangle(tab, 0, 0, 168, 24);
-            using (Brush gold = new SolidBrush(KavrosTheme.Gold))
-                g.DrawString("Clue Rewards", KavrosTheme.Display(11F), gold, 10, 3);
+            ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, IconGap);
         }
     }
 
@@ -122,7 +124,6 @@ namespace Chest
         readonly ChestLayout layout;
         readonly ComboBox windows = new ComboBox();
         readonly Label status = new Label();
-        readonly Label totals = new Label();
         readonly ChestView chest = new ChestView();
         readonly OpaqueButton restart = new OpaqueButton();
         readonly LootBook book;
@@ -140,8 +141,6 @@ namespace Chest
         readonly Label heading = new Label();
         readonly OpaqueButton collapse = new OpaqueButton();
         readonly OpaqueButton closeButton = new OpaqueButton();
-        readonly OpaqueButton unknownFolder = new OpaqueButton();
-        readonly OpaqueButton undo = new OpaqueButton();
         readonly System.Windows.Forms.Timer follow = new System.Windows.Forms.Timer();
         bool refreshing;
         bool resetArmed;
@@ -185,6 +184,8 @@ namespace Chest
             Font = KavrosTheme.Ui(9F, false);
             ClientSize = new Size(layout.WindowWidth, collapsed ? 32 : layout.WindowHeight);
             BuildChrome();
+            chest.UndoClicked = delegate { OnUndo(); };
+            chest.UnknownClicked = delegate { OpenUnknown(); };
             stackGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "stack.txt")));
             valueGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "value.txt")));
             icons = IconLibrary.Load(Path.Combine(assetPath, "icons"), Path.Combine(assetPath, "icons", "catalog.txt"));
@@ -228,6 +229,7 @@ namespace Chest
             {
                 CreateParams parameters = base.CreateParams;
                 parameters.ExStyle |= 0x80;
+                parameters.Style |= 0x02000000;
                 return parameters;
             }
         }
@@ -276,15 +278,6 @@ namespace Chest
             Controls.Add(status);
             chest.Grid = layout;
             Controls.Add(chest);
-            totals.ForeColor = KavrosTheme.TextFaint;
-            totals.Font = KavrosTheme.Ui(8F, false);
-            Controls.Add(totals);
-            unknownFolder.Text = "Unknown folder";
-            unknownFolder.Click += delegate { OpenUnknown(); };
-            Controls.Add(unknownFolder);
-            undo.Text = "Undo";
-            undo.Click += delegate { OnUndo(); };
-            Controls.Add(undo);
             OpaqueButton reset = new OpaqueButton();
             reset.Text = "Reset";
             reset.Click += delegate { OnReset(); };
@@ -319,9 +312,6 @@ namespace Chest
             windows.Visible = body;
             status.Visible = body;
             chest.Visible = body;
-            totals.Visible = body;
-            unknownFolder.Visible = body;
-            undo.Visible = body;
             foreach (Control control in Controls)
             {
                 if (control == titleBar) continue;
@@ -331,26 +321,20 @@ namespace Chest
             windows.Visible = true;
             status.Visible = true;
             chest.Visible = true;
-            totals.Visible = true;
-            unknownFolder.Visible = true;
-            undo.Visible = true;
-            windows.SetBounds(12, 40, Math.Max(80, w - 250), 26);
-            int right = w - 12;
+            windows.SetBounds(8, 34, Math.Max(120, w - 360), 24);
+            int right = w - 8;
             foreach (Control control in Controls)
             {
                 OpaqueButton button = control as OpaqueButton;
-                if (button == null || button == undo || button == unknownFolder || button == restart) continue;
-                if (button.Text == "Refresh") { right -= 78; button.SetBounds(right, 38, 74, 26); button.Visible = true; }
-                if (button.Text == "Save capture") { right -= 108; button.SetBounds(right, 38, 104, 26); button.Visible = true; }
-                if (button.Text == "Reset") { button.SetBounds(w - 12 - 64, h - 40, 64, 28); button.Visible = true; }
-                if (button.Text == "Updates") { button.SetBounds(w - 12 - 64 - 8 - 80, h - 40, 80, 28); button.Visible = true; }
+                if (button == null || button == restart || button == collapse || button == closeButton) continue;
+                if (button.Text == "Refresh") { right -= 72; button.SetBounds(right, 34, 68, 24); button.Visible = true; }
+                if (button.Text == "Save capture") { right -= 96; button.SetBounds(right, 34, 92, 24); button.Visible = true; }
+                if (button.Text == "Reset") { right -= 60; button.SetBounds(right, 34, 56, 24); button.Visible = true; }
+                if (button.Text == "Updates") { right -= 72; button.SetBounds(right, 34, 68, 24); button.Visible = true; }
             }
-            restart.SetBounds(w - 12 - 64 - 8 - 80 - 8 - 80, h - 40, 80, 28);
-            undo.SetBounds(12, h - 40, 64, 28);
-            unknownFolder.SetBounds(84, h - 40, 130, 28);
-            status.SetBounds(12, 70, w - 24, 16);
-            totals.SetBounds(12, h - 58, w - 24, 16);
-            chest.SetBounds(8, 90, Math.Max(40, w - 16), Math.Max(40, h - 90 - 66));
+            restart.SetBounds(8, 34, 72, 24);
+            status.SetBounds(8, 58, w - 16, 16);
+            chest.SetBounds(6, 76, Math.Max(80, w - 12), Math.Max(120, h - 82));
         }
 
         void SetCollapsed(bool value)
@@ -427,10 +411,13 @@ namespace Chest
             {
                 undoArmed = true;
                 undoArmedAt = DateTime.UtcNow;
+                chest.UndoArmed = true;
+                chest.Invalidate();
                 status.Text = "Click Undo again to remove the last casket.";
                 return;
             }
             undoArmed = false;
+            chest.UndoArmed = false;
             if (!book.UndoLast()) return;
             RefreshGrid();
             status.Text = "Removed the last casket.";
@@ -541,8 +528,11 @@ namespace Chest
             List<LootLine> lines = new List<LootLine>();
             foreach (SeenItem item in shot.Items)
             {
-                IconHit hit = IconLibrary.Match(icons, item.Bgra, item.Width, item.Height, layout.IconMatch);
                 LootLine line = new LootLine();
+                byte[] pixels = item.Bgra;
+                int pw = item.Width, ph = item.Height;
+                if (Noted.LooksNoted(pixels, pw, ph)) pixels = Noted.WithoutPaper(pixels, pw, ph);
+                IconHit hit = IconLibrary.Match(icons, pixels, pw, ph, layout.IconMatch);
                 line.Quantity = item.Quantity;
                 if (hit.Known)
                 {
@@ -551,14 +541,14 @@ namespace Chest
                 }
                 else
                 {
-                    string hash = IconLibrary.HashCrop(item.Bgra, item.Width, item.Height);
+                    string hash = IconLibrary.HashCrop(pixels, pw, ph);
                     line.Id = "unknown-" + hash;
                     line.Name = "Unknown";
                     line.Unknown = true;
                     string file = Path.Combine(book.UnknownDirectory, hash + ".png");
                     if (!File.Exists(file))
-                        FramePng.Save(new Frame(item.Bgra, item.Width, item.Height), file);
-                    Remember(line.Id, new Frame(item.Bgra, item.Width, item.Height));
+                        FramePng.Save(new Frame(pixels, pw, ph), file);
+                    Remember(line.Id, new Frame(pixels, pw, ph));
                 }
                 lines.Add(line);
             }
@@ -580,8 +570,10 @@ namespace Chest
                 slot.Image = PictureFor(line);
                 slots.Add(slot);
             }
+            chest.RewardValue = book.Value;
+            chest.Caskets = book.Caskets;
+            chest.UndoArmed = undoArmed;
             chest.ShowSlots(slots);
-            totals.Text = book.Caskets + " caskets   ·   " + Format(book.Value);
         }
 
         Bitmap PictureFor(LootLine line)
@@ -595,12 +587,15 @@ namespace Chest
                 if (frame == null) return null;
                 return Remember(line.Id, frame);
             }
+            IconRef fallback = null;
             foreach (IconRef icon in icons)
             {
                 string group = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
-                if (group == line.Id || icon.Name == line.Name)
-                    return Remember(line.Id, new Frame(icon.Bgra, icon.Width, icon.Height));
+                if (group != line.Id && icon.Name != line.Name) continue;
+                if (icon.Show) return Remember(line.Id, new Frame(icon.Bgra, icon.Width, icon.Height));
+                if (fallback == null) fallback = icon;
             }
+            if (fallback != null) return Remember(line.Id, new Frame(fallback.Bgra, fallback.Width, fallback.Height));
             return null;
         }
 
