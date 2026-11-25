@@ -1,0 +1,152 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
+
+namespace Chest
+{
+    internal sealed class LootLine
+    {
+        public string Id = "";
+        public string Name = "Unknown";
+        public long Quantity;
+        public bool Unknown;
+    }
+
+    // One combined chest. A commit is the reward that was on screen when the
+    // panel closed, after any rerolls.
+    internal sealed class LootBook
+    {
+        public int Caskets;
+        public long Value;
+        public readonly List<LootLine> Lines = new List<LootLine>();
+        readonly string root;
+
+        public LootBook(string root) { this.root = root; }
+
+        public string TotalsPath { get { return Path.Combine(root, "totals.json"); } }
+        public string UnknownDirectory { get { return Path.Combine(root, "unknown"); } }
+
+        public void Load()
+        {
+            Lines.Clear();
+            Caskets = 0;
+            Value = 0;
+            if (!File.Exists(TotalsPath)) return;
+            try { Parse(File.ReadAllText(TotalsPath, Encoding.UTF8)); }
+            catch (Exception ex) { CrashLog.Write(ex); }
+        }
+
+        public void Commit(IList<LootLine> items, long value)
+        {
+            if (items == null || items.Count == 0) return;
+            foreach (LootLine item in items)
+            {
+                LootLine line = null;
+                foreach (LootLine existing in Lines)
+                    if (existing.Id == item.Id) { line = existing; break; }
+                if (line == null)
+                {
+                    line = new LootLine { Id = item.Id, Name = item.Name, Unknown = item.Unknown };
+                    Lines.Add(line);
+                }
+                line.Quantity += item.Quantity;
+            }
+            Caskets++;
+            Value += value;
+            Save();
+        }
+
+        public void Reset()
+        {
+            Lines.Clear();
+            Caskets = 0;
+            Value = 0;
+            Save();
+        }
+
+        public void Save()
+        {
+            try
+            {
+                Directory.CreateDirectory(root);
+                StringBuilder json = new StringBuilder();
+                json.Append("{\r\n  \"caskets\": ").Append(Caskets.ToString(CultureInfo.InvariantCulture));
+                json.Append(",\r\n  \"value\": ").Append(Value.ToString(CultureInfo.InvariantCulture));
+                json.Append(",\r\n  \"items\": [");
+                for (int i = 0; i < Lines.Count; i++)
+                {
+                    LootLine line = Lines[i];
+                    if (i > 0) json.Append(',');
+                    json.Append("\r\n    {\"id\": \"").Append(Escape(line.Id));
+                    json.Append("\", \"name\": \"").Append(Escape(line.Name));
+                    json.Append("\", \"qty\": ").Append(line.Quantity.ToString(CultureInfo.InvariantCulture));
+                    json.Append(", \"unknown\": ").Append(line.Unknown ? "true" : "false").Append('}');
+                }
+                if (Lines.Count > 0) json.Append("\r\n  ");
+                json.Append("]\r\n}\r\n");
+                File.WriteAllText(TotalsPath, json.ToString(), Encoding.UTF8);
+            }
+            catch (Exception ex) { CrashLog.Write(ex); }
+        }
+
+        void Parse(string json)
+        {
+            Caskets = ReadInt(json, "caskets");
+            Value = ReadLong(json, "value");
+            int cursor = 0;
+            while (true)
+            {
+                int idAt = json.IndexOf("\"id\"", cursor, StringComparison.Ordinal);
+                if (idAt < 0) break;
+                LootLine line = new LootLine();
+                line.Id = ReadString(json, idAt);
+                int nameAt = json.IndexOf("\"name\"", idAt, StringComparison.Ordinal);
+                line.Name = nameAt < 0 ? line.Id : ReadString(json, nameAt);
+                int qtyAt = json.IndexOf("\"qty\"", idAt, StringComparison.Ordinal);
+                line.Quantity = qtyAt < 0 ? 0 : ReadLongAt(json, qtyAt);
+                int unknownAt = json.IndexOf("\"unknown\"", idAt, StringComparison.Ordinal);
+                line.Unknown = unknownAt >= 0 && json.IndexOf("true", unknownAt, StringComparison.Ordinal) >= 0 && json.IndexOf("true", unknownAt, StringComparison.Ordinal) < unknownAt + 20;
+                Lines.Add(line);
+                cursor = idAt + 4;
+            }
+        }
+
+        static int ReadInt(string json, string key)
+        {
+            long value = ReadLong(json, key);
+            return value > int.MaxValue ? int.MaxValue : (int)value;
+        }
+        static long ReadLong(string json, string key)
+        {
+            int at = json.IndexOf("\"" + key + "\"", StringComparison.Ordinal);
+            return at < 0 ? 0 : ReadLongAt(json, at);
+        }
+        static long ReadLongAt(string json, int at)
+        {
+            int colon = json.IndexOf(':', at);
+            if (colon < 0) return 0;
+            int i = colon + 1;
+            while (i < json.Length && (json[i] == ' ' || json[i] == '\r' || json[i] == '\n')) i++;
+            int start = i;
+            if (i < json.Length && json[i] == '-') i++;
+            while (i < json.Length && json[i] >= '0' && json[i] <= '9') i++;
+            long value;
+            return long.TryParse(json.Substring(start, i - start), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) ? value : 0;
+        }
+        static string ReadString(string json, int keyAt)
+        {
+            int colon = json.IndexOf(':', keyAt);
+            int quote = json.IndexOf('"', colon + 1);
+            if (quote < 0) return "";
+            int end = json.IndexOf('"', quote + 1);
+            if (end < 0) return "";
+            return json.Substring(quote + 1, end - quote - 1).Replace("\\\"", "\"").Replace("\\\\", "\\");
+        }
+        static string Escape(string text)
+        {
+            return (text ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+    }
+}

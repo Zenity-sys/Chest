@@ -1,0 +1,72 @@
+# file|name|group
+adamant-platebody.png|Adamant Platebody|adamant-platebody
+adamant-platelegs.png|Adamant Platelegs|adamant-platelegs
+air-rune.png|Air Rune|air-rune
+amulet-of-power.png|Amulet of Power|amulet-of-power
+ancient-page.png|Ancient Page|ancient-page
+armadyl-page.png|Armadyl Page|armadyl-page
+astral-rune.png|Astral Rune|astral-rune
+bandos-page.png|Bandos Page|bandos-page
+biscuits.png|Biscuits|biscuits
+black-platebody.png|Black Platebody|black-platebody
+black-platelegs.png|Black Platelegs|black-platelegs
+blood-rune.png|Blood Rune|blood-rune
+blue-firelighter.png|Blue Firelighter|blue-firelighter
+body-rune.png|Body Rune|body-rune
+bowstring.png|Bowstring|bowstring
+chaos-rune.png|Chaos Rune|chaos-rune
+coins-1.png|Coins|coins
+coins-100.png|Coins|coins
+coins-1000.png|Coins|coins
+coins-10000.png|Coins|coins
+coins-2.png|Coins|coins
+coins-25.png|Coins|coins
+coins-250.png|Coins|coins
+coins-5.png|Coins|coins
+cosmic-rune.png|Cosmic Rune|cosmic-rune
+death-rune.png|Death Rune|death-rune
+earth-rune.png|Earth Rune|earth-rune
+fire-rune.png|Fire Rune|fire-rune
+green-firelighter.png|Green Firelighter|green-firelighter
+guthix-page.png|Guthix Page|guthix-page
+hard-leather.png|Hard Leather|hard-leather
+holy-symbol.png|Holy Symbol|holy-symbol
+law-rune.png|Law Rune|law-rune
+leather.png|Leather|leather
+lobster.png|Lobster|lobster
+magic-composite-bow.png|Magic Composite Bow|magic-composite-bow
+magic-shortbow.png|Magic Shortbow|magic-shortbow
+mahogany-plank.png|Mahogany Plank|mahogany-plank
+mind-rune.png|Mind Rune|mind-rune
+mithril-platebody.png|Mithril Platebody|mithril-platebody
+mithril-platelegs.png|Mithril Platelegs|mithril-platelegs
+nature-rune.png|Nature Rune|nature-rune
+oak-plank.png|Oak Plank|oak-plank
+prayer-potion-4.png|Prayer Potion (4)|prayer-potion-4
+pure-essence.png|Pure Essence|pure-essence
+purple-firelighter.png|Purple Firelighter|purple-firelighter
+purple-sweets.png|Purple Sweets|purple-sweets
+red-firelighter.png|Red Firelighter|red-firelighter
+rune-platebody.png|Rune Platebody|rune-platebody
+rune-platelegs.png|Rune Platelegs|rune-platelegs
+saradomin-brew-4.png|Saradomin Brew (4)|saradomin-brew-4
+saradomin-page.png|Saradomin Page|saradomin-page
+shark.png|Shark|shark
+soft-clay.png|Soft Clay|soft-clay
+soul-rune.png|Soul Rune|soul-rune
+studded-body.png|Studded Body|studded-body
+studded-chaps.png|Studded Chaps|studded-chaps
+super-restore-4.png|Super Restore (4)|super-restore-4
+teak-plank.png|Teak Plank|teak-plank
+uncut-diamond.png|Uncut Diamond|uncut-diamond
+uncut-emerald.png|Uncut Emerald|uncut-emerald
+uncut-ruby.png|Uncut Ruby|uncut-ruby
+uncut-sapphire.png|Uncut Sapphire|uncut-sapphire
+unholy-symbol.png|Unholy Symbol|unholy-symbol
+water-rune.png|Water Rune|water-rune
+white-firelighter.png|White Firelighter|white-firelighter
+willow-composite-bow.png|Willow Composite Bow|willow-composite-bow
+willow-shortbow.png|Willow Shortbow|willow-shortbow
+yew-composite-bow.png|Yew Composite Bow|yew-composite-bow
+yew-shortbow.png|Yew Shortbow|yew-shortbow
+zamorak-page.png|Zamorak Page|zamorak-page
