@@ -57,19 +57,9 @@ namespace Chest
                     return;
                 }
                 string version = AppBranding.Shown(info.TargetFullRelease.Version.ToString());
-                Tell(owner, "Update " + version + " is ready.", false, "Restart", delegate
-                {
-                    ThreadPool.QueueUserWorkItem(delegate
-                    {
-                        try
-                        {
-                            Tell(owner, "Downloading " + version + "...", false, null, null);
-                            manager.DownloadUpdates(info, null);
-                            manager.ApplyUpdatesAndRestart(info.TargetFullRelease, null);
-                        }
-                        catch (Exception ex) { Tell(owner, Describe(ex), true, null, null); }
-                    });
-                });
+                Tell(owner, "Installing " + version + "...", false, null, null);
+                manager.DownloadUpdates(info, null);
+                manager.ApplyUpdatesAndRestart(info.TargetFullRelease, new string[0]);
             }
             catch (NotInstalledException)
             {

@@ -6,6 +6,6 @@ nameHeight=0
 pad=8
 windowWidth=640
 windowHeight=520
-pollMilliseconds=70
+pollMilliseconds=30
 missesBeforeClose=3
 iconMatch=0.94

@@ -65,31 +65,43 @@ namespace Chest
 
         public static Rectangle Find(Frame frame)
         {
-            if (frame == null) return Rectangle.Empty;
-            int bestY = int.MaxValue, bestX = 0;
-            bool found = false;
-            for (int y = 0; y < frame.Height; y++)
+            if (frame == null || frame.Bgra == null) return Rectangle.Empty;
+            byte[] px = frame.Bgra;
+            int w = frame.Width, h = frame.Height;
+            // One pass, top to bottom. The first red tab whose title reads
+            // TRAIL COMPLETE wins, so a popup above it cannot hide the casket.
+            for (int y = 0; y < h; y++)
             {
+                int row = y * w * 4;
                 int x = 0;
-                while (x < frame.Width)
+                while (x < w)
                 {
-                    if (DarkRed(frame, x, y))
+                    int i = row + x * 4;
+                    if (DarkRedRaw(px, i))
                     {
                         int x0 = x;
-                        while (x < frame.Width && DarkRed(frame, x, y)) x++;
+                        while (x < w && DarkRedRaw(px, row + x * 4)) x++;
                         int length = x - x0;
                         if (length >= 110 && length <= 190 && GoldCount(frame, y, x0) >= 80)
                         {
-                            if (y < bestY) { bestY = y; bestX = x0; found = true; }
+                            int left = x0 - 2, top = y - 4;
+                            if (left >= 0 && top >= 0 && left + PanelWidth <= w && top + PanelHeight <= h)
+                            {
+                                Rectangle panel = new Rectangle(left, top, PanelWidth, PanelHeight);
+                                if (titleTemplate == null || TitleMatches(frame, panel)) return panel;
+                            }
                         }
                     }
                     else x++;
                 }
             }
-            if (!found) return Rectangle.Empty;
-            int left = bestX - 2, top = bestY - 4;
-            if (left < 0 || top < 0 || left + PanelWidth > frame.Width || top + PanelHeight > frame.Height) return Rectangle.Empty;
-            return new Rectangle(left, top, PanelWidth, PanelHeight);
+            return Rectangle.Empty;
+        }
+
+        static bool DarkRedRaw(byte[] px, int i)
+        {
+            int b = px[i], g = px[i + 1], r = px[i + 2];
+            return r >= 40 && r <= 150 && g <= 48 && b <= 48 && r > g + 22 && r > b + 22;
         }
 
         static int GoldCount(Frame frame, int y, int x0)
