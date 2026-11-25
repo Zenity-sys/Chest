@@ -483,42 +483,83 @@ namespace Chest
             return n > 0 && sad / n < 18;
         }
 
-        // Pixel signature of the reroll progress line and the reroll button.
-        // A change while the panel stays open is a reroll, not a new casket.
-        public static string RerollKey(Frame frame, Rectangle panel)
+        // The number in REROLL REWARD (n). -1 when it cannot be read.
+        // n caps at 5. A reroll is only n dropping by exactly one.
+        public static int RerollCount(Frame frame, Rectangle panel)
         {
-            ulong hash = 1469598103934665603UL;
-            hash = HashBand(frame, panel, hash, 180, 340, 140, 156);
-            hash = HashBand(frame, panel, hash, 90, 300, 198, 220);
-            return hash.ToString("x16");
+            if (frame == null || panel.Width < 200) return -1;
+            int paren = -1;
+            for (int x = panel.X + 255; x < panel.X + 278; x++)
+            {
+                int ink = 0;
+                for (int y = panel.Y + 200; y < panel.Y + 216; y++)
+                    if (ButtonInk(frame, x, y)) ink++;
+                if (ink < 6) continue;
+                int left = 0;
+                for (int y = panel.Y + 200; y < panel.Y + 216; y++)
+                    if (ButtonInk(frame, x - 1, y)) left++;
+                if (left < 3) paren = x;
+            }
+            if (paren < 0) return -1;
+            int best = -1;
+            double bestRatio = 0;
+            for (int digit = 0; digit < ChargeShapes.Length; digit++)
+            {
+                int score = 0;
+                int compared = 0;
+                string[] rows = ChargeShapes[digit];
+                for (int y = 0; y < rows.Length; y++)
+                {
+                    string row = rows[y];
+                    for (int x = 0; x < row.Length; x++)
+                    {
+                        bool on = ButtonInk(frame, paren - 8 + x, panel.Y + 203 + y);
+                        bool want = row[x] == '#';
+                        if (on == want) score++;
+                        compared++;
+                    }
+                }
+                double ratio = compared == 0 ? 0 : score / (double)compared;
+                if (ratio > bestRatio)
+                {
+                    bestRatio = ratio;
+                    best = digit;
+                }
+            }
+            if (bestRatio < 0.82) return -1;
+            return best;
         }
 
-        static ulong HashBand(Frame frame, Rectangle panel, ulong hash, int x0, int x1, int y0, int y1)
+        static bool ButtonInk(Frame frame, int x, int y)
         {
-            for (int y = panel.Y + y0; y < panel.Y + y1; y += 2)
-                for (int x = panel.X + x0; x < panel.X + x1; x += 2)
-                {
-                    int r, g, b;
-                    frame.Get(x, y, out r, out g, out b);
-                    hash = Mix(hash, (byte)(r / 24));
-                    hash = Mix(hash, (byte)(g / 24));
-                    hash = Mix(hash, (byte)(b / 24));
-                }
-            return hash;
+            int r, g, b;
+            frame.Get(x, y, out r, out g, out b);
+            return r + g + b < 120 && r < 110 && g < 90;
         }
+
+        // 5-wide glyphs taken from the reward button, plus the same stroke style for 0-2.
+        static readonly string[][] ChargeShapes = new string[][] {
+            new string[] { ".##..", "#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".##.." },
+            new string[] { ".#...", "##...", ".#...", ".#...", ".#...", ".#...", ".#...", "###.." },
+            new string[] { "###..", "...#.", "...#.", "..#..", ".#...", "#....", "#....", "####." },
+            new string[] { "###..", "...#.", "...#.", ".....", "..##.", "...##", "...##", "...#.", "###.." },
+            new string[] { "..#..", "..#..", ".##..", "..#..", "..#..", "..#..", "####.", "..#..", ".##.." },
+            new string[] { "####.", "#....", "#....", ".##..", "..##.", "...#.", "...#.", "...#.", "##..." }
+        };
     }
 
-    // opened: first sight of TRAIL COMPLETE, counted immediately.
-    // replaced: the reroll line or button changed while the panel stayed open.
-    // closed: the panel has been gone long enough that the next one is a new casket.
+    // opened: a reward window that is not a one-step reroll. Count it.
+    // replaced: REROLL REWARD (n) fell by exactly one on this same window.
+    // closed: the window has been gone long enough that the next one is new.
     internal sealed class RewardSession
     {
         public int MissesBeforeClose = 3;
         public bool Open;
         int misses;
-        string rerollKey;
+        int charges = -1;
+        string mark;
 
-        public string See(bool visible, string key)
+        public string See(bool visible, int charges, string mark)
         {
             if (!visible)
             {
@@ -528,7 +569,8 @@ namespace Chest
                 {
                     Open = false;
                     misses = 0;
-                    rerollKey = null;
+                    this.charges = -1;
+                    this.mark = null;
                     return "closed";
                 }
                 return "none";
@@ -537,14 +579,25 @@ namespace Chest
             if (!Open)
             {
                 Open = true;
-                rerollKey = key;
+                this.charges = charges;
+                this.mark = mark;
                 return "opened";
             }
-            if (key != rerollKey)
+            if (this.charges >= 0 && charges == this.charges - 1)
             {
-                rerollKey = key;
+                this.charges = charges;
+                if (mark != null) this.mark = mark;
                 return "replaced";
             }
+            bool different = mark != null && this.mark != null && mark != this.mark;
+            if (charges >= 0 && different)
+            {
+                this.charges = charges;
+                this.mark = mark;
+                return "opened";
+            }
+            if (charges >= 0) this.charges = charges;
+            if (mark != null) this.mark = mark;
             return "none";
         }
 
@@ -552,7 +605,8 @@ namespace Chest
         {
             Open = false;
             misses = 0;
-            rerollKey = null;
+            charges = -1;
+            mark = null;
         }
     }
 }

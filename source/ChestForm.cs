@@ -28,13 +28,13 @@ namespace Chest
         public Action UndoClicked;
         public Action UnknownClicked;
         int scroll, hot = -1, down = -1;
-        readonly ToolTip names = new ToolTip();
+        string tip;
+        Point tipAt;
         public ChestView()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque | ControlStyles.ResizeRedraw, true);
             BackColor = Color.FromArgb(6, 14, 22);
             DoubleBuffered = true;
-            names.InitialDelay = 300;
         }
         public void ShowSlots(List<SlotView> slots)
         {
@@ -68,13 +68,14 @@ namespace Chest
             int hit = ChestFace.Hit(ClientRectangle, e.Location);
             if (hit != hot) { hot = hit; Invalidate(); }
             SlotView slot = HitIcon(e.Location);
-            string tip = slot == null || string.IsNullOrEmpty(slot.Name) ? "" : slot.Name;
-            if (names.GetToolTip(this) != tip) names.SetToolTip(this, tip);
+            string next = slot == null || string.IsNullOrEmpty(slot.Name) ? null : slot.Name + "\n" + StackText.Format(slot.Quantity);
+            if (next != tip || tipAt != e.Location) { tip = next; tipAt = e.Location; Invalidate(); }
         }
         protected override void OnMouseLeave(EventArgs e)
         {
             hot = -1;
             down = -1;
+            tip = null;
             Invalidate();
             base.OnMouseLeave(e);
         }
@@ -115,7 +116,7 @@ namespace Chest
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, IconGap);
+            ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, IconGap, tip, tipAt.X, tipAt.Y);
         }
     }
 
@@ -490,7 +491,7 @@ namespace Chest
             IntPtr handle = selected;
             if (handle == IntPtr.Zero || !Native.IsWindow(handle))
             {
-                session.See(false, null);
+                session.See(false, -1, null);
                 return;
             }
             if (Native.IsIconic(handle)) return;
@@ -510,12 +511,13 @@ namespace Chest
             bool titled = !local.IsEmpty && RewardReader.TitleMatches(frame, local);
             if (!titled)
             {
-                session.See(false, null);
+                session.See(false, -1, null);
                 return;
             }
             RewardShot shot = RewardReader.Read(frame, local, stackGlyphs, valueGlyphs);
             if (shot.Items.Count == 0) return;
-            string action = session.See(true, RewardReader.RerollKey(frame, local));
+            int charges = RewardReader.RerollCount(frame, local);
+            string action = session.See(true, charges, RewardReader.Fingerprint(frame, local));
             if (action == "none" || action == "closed") return;
             bool replace = action == "replaced";
             try { BeginInvoke(new Action(delegate { Apply(shot, replace); })); }
@@ -585,7 +587,8 @@ namespace Chest
                 string file = Path.Combine(book.UnknownDirectory, line.Id.Substring("unknown-".Length) + ".png");
                 Frame frame = File.Exists(file) ? FramePng.Decode(file) : null;
                 if (frame == null) return null;
-                return Remember(line.Id, frame);
+                byte[] cleaned = Noted.CleanForDisplay(frame.Bgra, frame.Width, frame.Height);
+                return Remember(line.Id, new Frame(cleaned, frame.Width, frame.Height));
             }
             IconRef fallback = null;
             foreach (IconRef icon in icons)
@@ -595,7 +598,11 @@ namespace Chest
                 if (icon.Show) return Remember(line.Id, new Frame(icon.Bgra, icon.Width, icon.Height));
                 if (fallback == null) fallback = icon;
             }
-            if (fallback != null) return Remember(line.Id, new Frame(fallback.Bgra, fallback.Width, fallback.Height));
+            if (fallback != null)
+            {
+                byte[] cleaned = Noted.CleanForDisplay(fallback.Bgra, fallback.Width, fallback.Height);
+                return Remember(line.Id, new Frame(cleaned, fallback.Width, fallback.Height));
+            }
             return null;
         }
 

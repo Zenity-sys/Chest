@@ -1,3 +1,10 @@
+## 0.4.0
+
+- A new casket is counted unless REROLL REWARD (n) drops by exactly one on the same window. n staying the same or going up is not a reroll.
+- The grid shows clean item sprites. A screen crop is only a last resort, and its flat background is removed first.
+- CLUE REWARDS sits in a gold-edged tab. Stack numbers use a dark outline and K/M for large amounts. Hovering an item shows its name and count on the panel.
+- CURRENT REWARD VALUE and the OPENED CLUES, UNDO, and UNKNOWN buttons stay under the grid.
+
 ## 0.3.0
 
 - The reward panel matches the in-game chest: gold CLUE REWARDS title, icons straight on the dark panel at their own size, and no boxes.

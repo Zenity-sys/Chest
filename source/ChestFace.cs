@@ -75,7 +75,7 @@ namespace Chest
             unknown = new Rectangle(undo.Right + gap, by, Math.Max(40, grid.Right - (undo.Right + gap)), 34);
         }
 
-        public static void Draw(Graphics g, Rectangle bounds, IList<SlotView> slots, int scroll, long value, int caskets, int hot, int down, bool undoArmed, int icon, int gap)
+        public static void Draw(Graphics g, Rectangle bounds, IList<SlotView> slots, int scroll, long value, int caskets, int hot, int down, bool undoArmed, int icon, int gap, string tip, int tipX, int tipY)
         {
             if (icon > IconBox) icon = IconBox;
             if (icon < 16) icon = 16;
@@ -83,17 +83,9 @@ namespace Chest
             g.Clear(Night);
             using (Pen edge = new Pen(GoldDim, 2)) g.DrawRectangle(edge, 3, 3, bounds.Width - 7, bounds.Height - 7);
             using (Pen inner = new Pen(Color.FromArgb(70, 48, 22))) g.DrawRectangle(inner, 7, 7, bounds.Width - 15, bounds.Height - 15);
-            using (Brush banner = new SolidBrush(Banner)) g.FillRectangle(banner, 8, 8, bounds.Width - 16, 24);
-            using (Pen gold = new Pen(GoldDim)) g.DrawLine(gold, 8, 32, bounds.Width - 9, 32);
             DrawCorners(g, bounds);
+            DrawTitleTab(g);
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            using (Brush shadow = new SolidBrush(Color.FromArgb(160, 20, 8, 6)))
-            using (Brush title = new SolidBrush(Gold))
-            {
-                Font face = KavrosTheme.Display(12F);
-                g.DrawString("CLUE REWARDS", face, shadow, 16, 11);
-                g.DrawString("CLUE REWARDS", face, title, 15, 10);
-            }
 
             Rectangle grid, clues, undo, unknown;
             Content(bounds, out grid, out clues, out undo, out unknown);
@@ -126,7 +118,9 @@ namespace Chest
                         int row = i / columns;
                         int x = grid.X + col * cell;
                         int y = grid.Y + row * cell - scroll;
-                        if (y > grid.Bottom || y + icon < grid.Top) continue;
+                        if (y > grid.Bottom || y + cell < grid.Top) continue;
+                        Rectangle cellRect = new Rectangle(x, y, cell - 2, cell - 2);
+                        g.SetClip(Rectangle.Intersect(grid, cellRect));
                         if (slot.Image != null)
                         {
                             int dw = slot.Image.Width;
@@ -140,13 +134,14 @@ namespace Chest
                             }
                             else g.InterpolationMode = InterpolationMode.NearestNeighbor;
                             int ix = x + (icon - dw) / 2;
-                            int iy = y + (icon - dh) / 2;
+                            int iy = y + 10 + Math.Max(0, (icon - dh) / 2);
                             g.DrawImage(slot.Image, new Rectangle(ix, iy, dw, dh));
                         }
                         string qty = StackText.Format(slot.Quantity);
                         g.DrawString(qty, qtyFont, shadow, x + 1, y);
+                        g.DrawString(qty, qtyFont, shadow, x - 1, y);
                         g.DrawString(qty, qtyFont, shadow, x, y + 1);
-                        g.DrawString(qty, qtyFont, shadow, x + 1, y + 1);
+                        g.DrawString(qty, qtyFont, shadow, x, y - 1);
                         g.DrawString(qty, qtyFont, yellow, x, y);
                     }
                 }
@@ -172,6 +167,47 @@ namespace Chest
             DrawButton(g, clues, CluesText(caskets), false, hot == 0, down == 0);
             DrawButton(g, undo, undoArmed ? "UNDO?" : "UNDO", true, hot == 1, down == 1);
             DrawButton(g, unknown, "UNKNOWN", false, hot == 2, down == 2);
+            DrawTip(g, bounds, tip, tipX, tipY);
+        }
+
+        static void DrawTitleTab(Graphics g)
+        {
+            Point[] tab = new Point[] {
+                new Point(16, 8),
+                new Point(196, 8),
+                new Point(214, 30),
+                new Point(16, 30)
+            };
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (Brush banner = new SolidBrush(Banner)) g.FillPolygon(banner, tab);
+            using (Pen gold = new Pen(GoldDim, 2)) g.DrawPolygon(gold, tab);
+            g.SmoothingMode = SmoothingMode.None;
+            using (Brush shadow = new SolidBrush(Color.FromArgb(180, 20, 8, 6)))
+            using (Brush title = new SolidBrush(Gold))
+            {
+                Font face = KavrosTheme.Display(11F);
+                g.DrawString("CLUE REWARDS", face, shadow, 25, 12);
+                g.DrawString("CLUE REWARDS", face, title, 24, 11);
+            }
+        }
+
+        static void DrawTip(Graphics g, Rectangle bounds, string tip, int tipX, int tipY)
+        {
+            if (string.IsNullOrEmpty(tip)) return;
+            Font font = KavrosTheme.Ui(8F, false);
+            SizeF size = g.MeasureString(tip, font);
+            int w = (int)size.Width + 14;
+            int h = (int)size.Height + 8;
+            int x = tipX + 14;
+            int y = tipY + 16;
+            if (x + w > bounds.Right - 6) x = tipX - w - 8;
+            if (y + h > bounds.Bottom - 6) y = tipY - h - 8;
+            if (x < 6) x = 6;
+            if (y < 34) y = 34;
+            Rectangle box = new Rectangle(x, y, w, h);
+            using (Brush fill = new SolidBrush(Color.FromArgb(32, 24, 16))) g.FillRectangle(fill, box);
+            using (Pen pen = new Pen(GoldDim)) g.DrawRectangle(pen, box);
+            using (Brush ink = new SolidBrush(Ink)) g.DrawString(tip, font, ink, x + 7, y + 3);
         }
 
         public static int Hit(Rectangle bounds, Point point)

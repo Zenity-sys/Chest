@@ -24,22 +24,45 @@ namespace Chest
             Icons(root);
             Fixtures(root);
             Preview(root);
+            RealRewards(root);
             Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
             return failed == 0 ? 0 : 1;
         }
 
+        static int Count(params string[] actions)
+        {
+            int n = 0;
+            foreach (string action in actions) if (action == "opened") n++;
+            return n;
+        }
+
         static void Latch()
         {
-            RewardSession session = new RewardSession();
-            session.MissesBeforeClose = 3;
-            Check(session.See(true, "a") == "opened", "the first window counts immediately");
-            Check(session.See(true, "a") == "none", "the same window is not a second casket");
-            Check(session.See(false, null) == "none", "one miss stays open");
-            Check(session.See(true, "b") == "replaced", "a reroll replaces the open casket");
-            Check(session.See(true, "b") == "none", "the new roll stays put");
-            Check(session.See(false, null) == "none" && session.See(false, null) == "none" && session.See(false, null) == "closed", "three misses close it");
-            Check(session.See(false, null) == "none", "a closed window does not count");
-            Check(session.See(true, "b") == "opened", "the next window is a new casket");
+            RewardSession fresh = new RewardSession();
+            fresh.MissesBeforeClose = 3;
+            string a = fresh.See(true, 5, "one");
+            string b = fresh.See(true, 5, "two");
+            string c = fresh.See(true, 5, "three");
+            Check(a == "opened" && b == "opened" && c == "opened" && Count(a, b, c) == 3, "three new caskets count as three");
+
+            RewardSession rolled = new RewardSession();
+            string open = rolled.See(true, 5, "loot");
+            string swap = rolled.See(true, 4, "loot-2");
+            string hold = rolled.See(true, 4, "loot-2");
+            Check(open == "opened" && swap == "replaced" && hold == "none" && Count(open, swap, hold) == 1, "a 5 to 4 reroll replaces the same casket");
+
+            RewardSession same = new RewardSession();
+            string first = same.See(true, 5, "alpha");
+            string second = same.See(true, 5, "beta");
+            Check(first == "opened" && second == "opened" && Count(first, second) == 2, "n staying at 5 across two caskets counts two");
+
+            RewardSession refilled = new RewardSession();
+            string low = refilled.See(true, 3, "old");
+            refilled.See(false, -1, null);
+            refilled.See(false, -1, null);
+            refilled.See(false, -1, null);
+            string up = refilled.See(true, 4, "new");
+            Check(low == "opened" && up == "opened" && Count(low, up) == 2, "n going from 3 to 4 is a new casket");
             Rectangle game = new Rectangle(100, 80, 900, 600);
             Rectangle placed = FloatingPanelLayout.Place(game, new Size(200, 120), new Point(800, 40), new Rectangle(0, 0, 2000, 1200));
             Check(placed.X == 800 && placed.Y == 120 && placed.Right <= game.Right && placed.Bottom <= game.Bottom, "panel stays inside the client");
@@ -47,7 +70,7 @@ namespace Chest
             Check(!FloatingPanelLayout.WantTopMost(true, false, false, false), "not topmost over another app");
             Check(FloatingPanelLayout.Shown(true, false, false, true), "the panel stays while it is being used");
             Check(!FloatingPanelLayout.Shown(true, true, true, true), "a minimised client hides the panel");
-            Check(StackText.Format(1089) == "1089" && StackText.Format(10000) == "10k" && StackText.Format(15500) == "15.5k" && StackText.Format(2500000) == "2.5M", "stack numbers use k and M");
+            Check(StackText.Format(1089) == "1089" && StackText.Format(10000) == "10K" && StackText.Format(100000) == "100K" && StackText.Format(1200000) == "1.2M", "stack numbers use K and M");
             int columns = ChestFace.Columns(440, 32, 12);
             Check(columns >= 8 && columns * (32 + 12) <= 440, "every column fits the width (" + columns + ")");
             Check(ChestFace.ValueText(6929679) == "CURRENT REWARD VALUE: 6,929,679", "value line uses the summed casket total");
@@ -152,9 +175,15 @@ namespace Chest
                 Rectangle a = RewardReader.Find(titled);
                 Rectangle b = RewardReader.Find(other);
                 Rectangle c = RewardReader.Find(later);
-                string keyA = RewardReader.RerollKey(titled, a);
-                Check(keyA == RewardReader.RerollKey(FramePng.Decode(Path.Combine(root, "fixtures", "master-0.png")), RewardReader.Find(FramePng.Decode(Path.Combine(root, "fixtures", "master-0.png")))), "the same reroll state shares a key");
-                Check(RewardReader.RerollKey(other, b) != RewardReader.RerollKey(later, c), "a reroll button change is a new key");
+                Check(!b.IsEmpty && !c.IsEmpty, "later fixtures still have a reward panel");
+                int[] charges = new int[6];
+                for (int n = 0; n < 6; n++)
+                {
+                    Frame shot = FramePng.Decode(Path.Combine(root, "fixtures", "master-" + n + ".png"));
+                    charges[n] = RewardReader.RerollCount(shot, RewardReader.Find(shot));
+                }
+                Check(charges[0] == 5 && charges[1] == 5 && charges[2] == 5 && charges[3] == 5, "reroll charges read 5 (" + charges[0] + "," + charges[1] + "," + charges[2] + "," + charges[3] + ")");
+                Check(charges[4] == 4 && charges[5] == 3, "reroll charges read 4 then 3 (" + charges[4] + "," + charges[5] + ")");
                 Frame stripped = titled.Crop(new Rectangle(0, 0, titled.Width, titled.Height));
                 for (int y = a.Y + 4; y < a.Y + 28; y++)
                     for (int x = a.X + 10; x < a.X + 170; x++)
@@ -214,7 +243,7 @@ namespace Chest
             using (Bitmap bitmap = new Bitmap(640, 300))
             using (Graphics g = Graphics.FromImage(bitmap))
             {
-                ChestFace.Draw(g, new Rectangle(0, 0, bitmap.Width, bitmap.Height), slots, 0, 6929679, 74, -1, -1, false, 32, 12);
+                ChestFace.Draw(g, new Rectangle(0, 0, bitmap.Width, bitmap.Height), slots, 0, 6929679, 74, -1, -1, false, 32, 12, "Coins\n34", 80, 70);
                 string folder = Path.Combine(Path.GetTempPath(), "chest-preview");
                 Directory.CreateDirectory(folder);
                 bitmap.Save(Path.Combine(folder, "clue-rewards.png"), System.Drawing.Imaging.ImageFormat.Png);
@@ -231,6 +260,144 @@ namespace Chest
             }
             foreach (SlotView slot in slots) if (slot.Image != null) slot.Image.Dispose();
             Check(true, "grid preview drawn");
+        }
+
+        static void RealRewards(string root)
+        {
+            List<IconRef> icons = IconLibrary.Load(Path.Combine(root, "assets", "icons"), Path.Combine(root, "assets", "icons", "catalog.txt"));
+            List<Glyph> stack = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "stack.txt"));
+            List<Glyph> value = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "value.txt"));
+            RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
+            List<SlotView> all = new List<SlotView>();
+            List<SlotView>[] steps = new List<SlotView>[] { new List<SlotView>(), new List<SlotView>(), new List<SlotView>() };
+            long[] stepValue = new long[3];
+            int step = 0;
+            int named = 0, unknown = 0;
+            for (int i = 0; i < 6; i++)
+            {
+                Frame frame = FramePng.Decode(Path.Combine(root, "fixtures", "master-" + i + ".png"));
+                if (frame == null) continue;
+                Rectangle panel = RewardReader.Find(frame);
+                if (panel.IsEmpty || !RewardReader.TitleMatches(frame, panel)) continue;
+                RewardShot shot = RewardReader.Read(frame, panel, stack, value);
+                if (step < 3)
+                {
+                    stepValue[step] = shot.Value;
+                    foreach (SeenItem item in shot.Items) steps[step].Add(Shown(icons, item, out named, out unknown));
+                    step++;
+                }
+                foreach (SeenItem item in shot.Items)
+                {
+                    int ignoreA = 0, ignoreB = 0;
+                    SlotView slot = Shown(icons, item, out ignoreA, out ignoreB);
+                    if (slot.Image != null) all.Add(slot);
+                    if (all.Count >= 18) break;
+                }
+                if (all.Count >= 18) break;
+            }
+            Check(all.Count >= 5, "real reward crops matched into the grid (" + all.Count + ")");
+            SaveFace(all, 210202, 6, Path.Combine(Path.GetTempPath(), "chest-preview", "real-grid.png"), "real grid");
+            SaveFace(all, 210202, 6, "/opt/cursor/artifacts/clue-rewards-real.png", "real grid artifact");
+            if (steps[0].Count > 0 && steps[1].Count > 0 && steps[2].Count > 0)
+            {
+                using (Bitmap strip = new Bitmap(640 * 3, 300))
+                using (Graphics g = Graphics.FromImage(strip))
+                {
+                    long running = 0;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        running += stepValue[i];
+                        using (Bitmap one = new Bitmap(640, 300))
+                        using (Graphics face = Graphics.FromImage(one))
+                        {
+                            ChestFace.Draw(face, new Rectangle(0, 0, 640, 300), steps[i], 0, running, i + 1, -1, -1, false, 32, 12, null, 0, 0);
+                            g.DrawImage(one, i * 640, 0);
+                        }
+                    }
+                    WritePng(strip, Path.Combine(Path.GetTempPath(), "chest-preview", "count-sequence.png"));
+                    WritePng(strip, "/opt/cursor/artifacts/clue-rewards-count.png");
+                }
+                Check(true, "opened-clues sequence drawn");
+            }
+            else Check(false, "opened-clues sequence drawn");
+        }
+
+        static SlotView Shown(List<IconRef> icons, SeenItem item, out int named, out int unknown)
+        {
+            named = 0;
+            unknown = 0;
+            byte[] pixels = item.Bgra;
+            if (Noted.LooksNoted(pixels, item.Width, item.Height)) pixels = Noted.WithoutPaper(pixels, item.Width, item.Height);
+            IconHit hit = IconLibrary.Match(icons, pixels, item.Width, item.Height, 0.90);
+            SlotView slot = new SlotView();
+            slot.Quantity = item.Quantity;
+            byte[] display = pixels;
+            int dw = item.Width, dh = item.Height;
+            if (hit.Known)
+            {
+                named = 1;
+                slot.Name = hit.Name;
+                string group = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
+                foreach (IconRef icon in icons)
+                {
+                    string iconGroup = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
+                    if (!icon.Show || iconGroup != group) continue;
+                    display = icon.Bgra;
+                    dw = icon.Width;
+                    dh = icon.Height;
+                    break;
+                }
+            }
+            else
+            {
+                unknown = 1;
+                slot.Name = "Unknown";
+                slot.Unknown = true;
+                display = Noted.CleanForDisplay(pixels, item.Width, item.Height);
+            }
+            slot.Image = BitmapOf(display, dw, dh);
+            return slot;
+        }
+
+        static Bitmap BitmapOf(byte[] bgra, int width, int height)
+        {
+            Bitmap image = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            System.Drawing.Imaging.BitmapData data = image.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                int stride = data.Stride;
+                if (stride == width * 4) System.Runtime.InteropServices.Marshal.Copy(bgra, 0, data.Scan0, Math.Min(bgra.Length, stride * height));
+                else
+                    for (int y = 0; y < height; y++)
+                        System.Runtime.InteropServices.Marshal.Copy(bgra, y * width * 4, IntPtr.Add(data.Scan0, y * stride), width * 4);
+            }
+            finally { image.UnlockBits(data); }
+            return image;
+        }
+
+        static void SaveFace(List<SlotView> slots, long value, int caskets, string path, string label)
+        {
+            try
+            {
+                using (Bitmap bitmap = new Bitmap(640, 360))
+                using (Graphics g = Graphics.FromImage(bitmap))
+                {
+                    ChestFace.Draw(g, new Rectangle(0, 0, bitmap.Width, bitmap.Height), slots, 0, value, caskets, -1, -1, false, 32, 12, slots.Count > 0 ? slots[0].Name + "\n" + StackText.Format(slots[0].Quantity) : null, 70, 60);
+                    WritePng(bitmap, path);
+                }
+            }
+            catch (Exception) { }
+        }
+
+        static void WritePng(Bitmap bitmap, string path)
+        {
+            try
+            {
+                string folder = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
+                bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            catch (Exception) { }
         }
 
         static string FindRoot()
