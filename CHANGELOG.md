@@ -1,3 +1,9 @@
+## 0.6.2
+
+- Coming back to the same reward, even after an alt-tab, does not count it again. Reset and Undo clear that memory.
+- A spent reroll, shown as a grey REROLL REWARD button, replaces the last casket and removes its items and value.
+- A yellow 20 on a bright rune reads 20.
+
 ## 0.6.1
 
 - Settings opens beside the reward panel. Closing Settings leaves the panel open.

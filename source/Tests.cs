@@ -405,6 +405,7 @@ namespace Chest
         static void Pipeline(string root)
         {
             RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
+            List<IconRef> icons = IconLibrary.Load(Path.Combine(root, "assets", "icons"), Path.Combine(root, "assets", "icons", "catalog.txt"));
             List<Glyph> stack = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "stack.txt"));
             List<Glyph> value = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "value.txt"));
             string dir = Path.Combine(Path.GetTempPath(), "chest-pipe-" + Guid.NewGuid().ToString("N"));
@@ -424,12 +425,14 @@ namespace Chest
                 if (panel.IsEmpty) continue;
                 RewardShot shot = RewardReader.Read(frame, panel, stack, value);
                 Check(shot.Items.Count > 0, "pipeline reads items in master-" + i + " (" + shot.Items.Count + ")");
+                Name(icons, shot);
+                shot.Fingerprint = RewardReader.Semantic(shot.Value, shot.Items);
                 if (i > 0)
                     for (int miss = 0; miss < session.MissesBeforeClose; miss++)
                         session.See(false, -1, null);
                 int charges = RewardReader.RerollCount(frame, panel);
                 string action = session.See(true, charges, shot.Fingerprint);
-                string wanted = i >= 4 ? "replaced" : "opened";
+                string wanted = i == 1 ? "none" : (i >= 4 ? "replaced" : "opened");
                 Check(action == wanted, "pipeline logs master-" + i + " as " + wanted + " (" + action + ")");
                 if (action == "opened")
                     book.Commit(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
@@ -437,7 +440,7 @@ namespace Chest
                     book.ReplaceLast(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
             }
             clock.Stop();
-            Check(book.Caskets == 4, "pipeline keeps the two rerolls on the open count (" + book.Caskets + ")");
+            Check(book.Caskets == 3, "pipeline keeps a repeat and the rerolls off the open count (" + book.Caskets + ")");
             Check(first > 0 && first < 800, "full client master-0 is read in " + first + " ms");
             Check(clock.ElapsedMilliseconds < 2500, "all six reward shots are read in " + clock.ElapsedMilliseconds + " ms");
             try { Directory.Delete(dir, true); } catch (Exception) { }
@@ -734,7 +737,7 @@ namespace Chest
             string shut = closed.See(false, -1, null);
             string reopen = closed.See(true, 5, mark);
             string held = closed.See(true, 5, mark);
-            Check(shut == "closed" && reopen == "opened" && held == "none", "a 500 ms close counts the next open once");
+            Check(shut == "closed" && reopen == "none" && held == "none", "the same casket after a close is not counted again");
 
             RewardSession gap = new RewardSession();
             int gapNow = 0;
@@ -812,7 +815,45 @@ namespace Chest
                 Check(opened == "opened" && again == "none", "a shifted grab does not count the casket again");
             }
 
+            RewardSession tab = new RewardSession();
+            int tabNow = 0;
+            tab.Clock = delegate { return tabNow; };
+            string tabOpen = tab.See(true, 5, "9255|staff-of-airx1|itemx13");
+            tabNow = 200;
+            tab.See(false, -1, null);
+            tabNow = 10700;
+            string tabShut = tab.See(false, -1, null);
+            string tabBack = tab.See(true, -1, "9255|staff-of-airx1|itemx13");
+            string tabAgain = tab.See(true, -1, "9255|staff-of-airx1|itemx13");
+            Check(tabOpen == "opened" && tabShut == "closed" && tabBack == "none" && tabAgain == "none", "alt-tab of 10 seconds does not count the same casket again");
+            tab.Reset();
+            Check(tab.See(true, -1, "9255|staff-of-airx1|itemx13") == "opened", "reset lets the next casket log");
+
+            RewardSession chain = new RewardSession();
+            string chainOpen = chain.See(true, 5, "c5");
+            bool chainOk = chainOpen == "opened";
+            for (int n = 4; n >= 0 && chainOk; n--)
+                chainOk = chain.See(true, n, "c" + n) == "replaced";
+            Check(chainOk, "every reroll from 5 down to 0 replaces the last casket");
+
+            string spentDir = Path.Combine(Path.GetTempPath(), "chest-reroll-" + Guid.NewGuid().ToString("N"));
+            LootBook spent = new LootBook(spentDir);
+            spent.Commit(new LootLine[] { new LootLine { Id = "staff-of-air", Name = "Staff of air", Quantity = 1 } }, 9000);
+            spent.ReplaceLast(new LootLine[] { new LootLine { Id = "law-rune", Name = "Law rune", Quantity = 20 } }, 500);
+            bool staffGone = true;
+            bool lawKept = false;
+            foreach (LootLine line in spent.Lines)
+            {
+                if (line.Id == "staff-of-air" && line.Quantity > 0) staffGone = false;
+                if (line.Id == "law-rune" && line.Quantity == 20) lawKept = true;
+            }
+            Check(spent.Caskets == 1 && spent.Value == 500 && spent.Opens.Count == 1 && spent.Opens[0] == 500 && staffGone && lawKept, "a reroll removes the old items and the old value");
+            try { Directory.Delete(spentDir, true); } catch (Exception) { }
+
+            RewardReader.Use(1440, 96);
+            Check(GreyReroll() == 0, "a greyed-out REROLL REWARD reads 0 (" + GreyReroll() + ")");
             Check(StackOnRune(root, stack) == 150, "150 on an air rune reads 150 (" + StackOnRune(root, stack) + ")");
+            Check(LawRuneTwenty(stack) == 20, "20 on a law rune reads 20 (" + LawRuneTwenty(stack) + ")");
         }
 
         static void Name(List<IconRef> icons, RewardShot shot)
@@ -879,6 +920,53 @@ namespace Chest
             item.Y = oy;
             item.Width = rune.Width;
             item.Height = rune.Height;
+            return RewardReader.ReadStack(frame, item, glyphs);
+        }
+
+        static int GreyReroll()
+        {
+            int width = 396, height = 239;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 36; data[i + 1] = 28; data[i + 2] = 18; data[i + 3] = 255; }
+            for (int y = 198; y <= 218; y++)
+                for (int x = 100; x <= 310; x++)
+                    Paint(data, width, height, x, y, 98, 115, 125);
+            for (int y = 203; y <= 211; y++)
+                for (int x = 137; x <= 254; x++)
+                    if (((x + y) & 1) == 0) Paint(data, width, height, x, y, 255, 255, 255);
+            Frame frame = new Frame(data, width, height);
+            return RewardReader.RerollCount(frame, new Rectangle(0, 0, width, height));
+        }
+
+        static int LawRuneTwenty(List<Glyph> glyphs)
+        {
+            string[] rows = new string[] {
+                ".###....#..",
+                "#...#..#.#.",
+                "....#.#...#",
+                "...#..#...#",
+                "..#...#...#",
+                ".#....#...#",
+                "#......#.#.",
+                "#####...#.."
+            };
+            int width = 64, height = 40, ox = 8, oy = 10;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 198; data[i + 1] = 190; data[i + 2] = 190; data[i + 3] = 255; }
+            for (int y = 0; y < rows.Length; y++)
+                for (int x = 0; x < rows[y].Length; x++)
+                {
+                    if (rows[y][x] != '#') continue;
+                    Paint(data, width, height, ox + x + 1, oy + y + 1, 0, 0, 0);
+                    Paint(data, width, height, ox + x, oy + y, 0, 255, 255);
+                }
+            Frame frame = new Frame(data, width, height);
+            try { FramePng.Save(frame, "/opt/cursor/artifacts/law-rune-20.png"); } catch (Exception) { }
+            SeenItem item = new SeenItem();
+            item.X = ox;
+            item.Y = oy;
+            item.Width = 30;
+            item.Height = 30;
             return RewardReader.ReadStack(frame, item, glyphs);
         }
 

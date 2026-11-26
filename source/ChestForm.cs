@@ -182,6 +182,7 @@ namespace Chest
         Point dragStart;
         Point offsetAtDrag;
         volatile bool running = true;
+        volatile bool forgetLogged;
         volatile bool saveRequested;
         volatile int clientEpoch;
         int watchEpoch;
@@ -525,6 +526,7 @@ namespace Chest
             resetArmed = false;
             chest.ResetArmed = false;
             book.Reset();
+            forgetLogged = true;
             RefreshGrid();
             Say("Chest cleared.");
         }
@@ -548,6 +550,7 @@ namespace Chest
             undoArmed = false;
             chest.UndoArmed = false;
             if (!book.UndoLast()) return;
+            forgetLogged = true;
             RefreshGrid();
             Say("Removed the last casket.");
         }
@@ -625,6 +628,11 @@ namespace Chest
 
         void Tick()
         {
+            if (forgetLogged)
+            {
+                forgetLogged = false;
+                session.Reset();
+            }
             if (watchEpoch != clientEpoch)
             {
                 watchEpoch = clientEpoch;

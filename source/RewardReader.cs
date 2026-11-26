@@ -514,7 +514,7 @@ namespace Chest
                     if (ButtonInk(frame, x - Px(1), y)) left++;
                 if (left < Px(3)) paren = x;
             }
-            if (paren < 0) return -1;
+            if (paren < 0) return SpentReroll(frame, panel) ? 0 : -1;
             int best = -1;
             double bestRatio = 0;
             for (int digit = 0; digit < ChargeShapes.Length; digit++)
@@ -542,6 +542,40 @@ namespace Chest
             }
             if (bestRatio < 0.82) return -1;
             return best;
+        }
+
+        // The last reroll greys the button out. It then reads REROLL REWARD with no (n).
+        static bool SpentReroll(Frame frame, Rectangle panel)
+        {
+            int grey = 0, samples = 0;
+            int y = panel.Y + Px(210);
+            int step = Math.Max(1, Px(2));
+            for (int x = panel.X + Px(110); x <= panel.X + Px(130); x += step)
+            {
+                samples++;
+                int r, g, b;
+                frame.Get(x, y, out r, out g, out b);
+                if (r >= 110 && r <= 155 && g >= 100 && g <= 145 && b >= 75 && b <= 125 && r > g && g > b) grey++;
+            }
+            for (int x = panel.X + Px(260); x <= panel.X + Px(290); x += step)
+            {
+                samples++;
+                int r, g, b;
+                frame.Get(x, y, out r, out g, out b);
+                if (r >= 110 && r <= 155 && g >= 100 && g <= 145 && b >= 75 && b <= 125 && r > g && g > b) grey++;
+            }
+            if (samples == 0 || grey * 2 < samples) return false;
+            int white = 0;
+            int top = panel.Y + Px(203), bottom = panel.Y + Px(211);
+            int left = panel.X + Px(137), right = panel.X + Px(254);
+            for (int yy = top; yy <= bottom; yy++)
+                for (int xx = left; xx <= right; xx++)
+                {
+                    int r, g, b;
+                    frame.Get(xx, yy, out r, out g, out b);
+                    if (r > 220 && g > 220 && b > 220) white++;
+                }
+            return white >= Px(100);
         }
 
         static bool ButtonInk(Frame frame, int x, int y)
@@ -634,7 +668,6 @@ namespace Chest
                     misses = 0;
                     closedAt = Now();
                     haveClosedAt = true;
-                    logged = "";
                     return "closed";
                 }
                 return "none";
@@ -653,6 +686,14 @@ namespace Chest
             }
             if (!Open)
             {
+                // Alt-tab, or any gap, must not count the same reward a second time.
+                if (!string.IsNullOrEmpty(logged) && (mark ?? "") == logged)
+                {
+                    Open = true;
+                    if (charges >= 0) heldCharges = charges;
+                    ClearPending();
+                    return "none";
+                }
                 Open = true;
                 Remember(charges, mark);
                 return "opened";
