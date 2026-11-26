@@ -12,7 +12,7 @@ namespace Chest
         public int Width, Height;
         public byte[] Bgra;
         public bool Show = true;
-        public readonly List<int> Samples = new List<int>();
+        public byte[] Patch;
     }
 
     internal sealed class IconHit
@@ -21,6 +21,7 @@ namespace Chest
         public string Group = "";
         public double Score, Second;
         public bool Known;
+        public string Candidate = "";
     }
 
     internal static class IconLibrary
@@ -57,60 +58,122 @@ namespace Chest
                     if (row.Length >= 4 && row[3] == "match") icon.Show = false;
                 }
                 else { icon.Name = Path.GetFileNameWithoutExtension(file); icon.Group = icon.Name; }
-                BuildSamples(icon);
+                icon.Patch = Normalize(icon.Bgra, icon.Width, icon.Height);
                 icons.Add(icon);
             }
             return icons;
         }
 
-        static void BuildSamples(IconRef icon)
+        // Fit the main shape into a square without stretching it sideways.
+        // A wide pair of glasses stays wide, so it lines up with the wiki sprite.
+        public static byte[] Normalize(byte[] src, int width, int height)
         {
-            for (int y = 0; y < 32; y += 2)
-                for (int x = 0; x < 32; x += 2)
+            int n = 32;
+            byte[] patch = new byte[n * n * 4];
+            if (src == null || width < 2 || height < 2) return patch;
+            int minX, minY, maxX, maxY;
+            if (!MainShape(src, width, height, out minX, out minY, out maxX, out maxY)) return patch;
+            int bw = maxX - minX + 1, bh = maxY - minY + 1;
+            int side = bw > bh ? bw : bh;
+            if (side < 1) side = 1;
+            int nw = bw * n / side;
+            int nh = bh * n / side;
+            if (nw < 1) nw = 1;
+            if (nh < 1) nh = 1;
+            int ox = (n - nw) / 2, oy = (n - nh) / 2;
+            for (int y = 0; y < nh; y++)
+                for (int x = 0; x < nw; x++)
                 {
-                    int sx = x * icon.Width / 32;
-                    int sy = y * icon.Height / 32;
-                    int i = (sy * icon.Width + sx) * 4;
-                    if (icon.Bgra[i + 3] < 128) continue;
-                    int r = icon.Bgra[i + 2], g = icon.Bgra[i + 1], b = icon.Bgra[i];
-                    if (r > 210 && g > 175 && b < 70) continue;
-                    icon.Samples.Add(x);
-                    icon.Samples.Add(y);
-                    icon.Samples.Add(icon.Bgra[i + 2]);
-                    icon.Samples.Add(icon.Bgra[i + 1]);
-                    icon.Samples.Add(icon.Bgra[i]);
+                    int sx = minX + x * bw / nw;
+                    int sy = minY + y * bh / nh;
+                    if (sx > maxX) sx = maxX;
+                    if (sy > maxY) sy = maxY;
+                    int from = (sy * width + sx) * 4;
+                    int to = ((y + oy) * n + (x + ox)) * 4;
+                    patch[to] = src[from];
+                    patch[to + 1] = src[from + 1];
+                    patch[to + 2] = src[from + 2];
+                    patch[to + 3] = src[from + 3];
                 }
+            return patch;
+        }
+
+        static bool MainShape(byte[] src, int width, int height, out int minX, out int minY, out int maxX, out int maxY)
+        {
+            minX = 0; minY = 0; maxX = -1; maxY = -1;
+            int n = width * height;
+            byte[] seen = new byte[n];
+            int[] stack = new int[n];
+            int best = 0, bestX0 = 0, bestY0 = 0, bestX1 = -1, bestY1 = -1;
+            for (int start = 0; start < n; start++)
+            {
+                if (seen[start] != 0 || !Ink(src, start * 4)) continue;
+                int sp = 0;
+                stack[sp++] = start;
+                seen[start] = 1;
+                int count = 0, x0 = width, y0 = height, x1 = -1, y1 = -1;
+                while (sp > 0)
+                {
+                    int i = stack[--sp];
+                    int x = i % width, y = i / width;
+                    count++;
+                    if (x < x0) x0 = x;
+                    if (y < y0) y0 = y;
+                    if (x > x1) x1 = x;
+                    if (y > y1) y1 = y;
+                    PushInk(src, seen, stack, ref sp, width, height, x + 1, y);
+                    PushInk(src, seen, stack, ref sp, width, height, x - 1, y);
+                    PushInk(src, seen, stack, ref sp, width, height, x, y + 1);
+                    PushInk(src, seen, stack, ref sp, width, height, x, y - 1);
+                }
+                if (count > best)
+                {
+                    best = count;
+                    bestX0 = x0; bestY0 = y0; bestX1 = x1; bestY1 = y1;
+                }
+            }
+            if (best < 8) return false;
+            minX = bestX0; minY = bestY0; maxX = bestX1; maxY = bestY1;
+            return true;
+        }
+
+        static void PushInk(byte[] src, byte[] seen, int[] stack, ref int sp, int width, int height, int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height) return;
+            int i = y * width + x;
+            if (seen[i] != 0 || !Ink(src, i * 4)) return;
+            seen[i] = 1;
+            stack[sp++] = i;
+        }
+
+        static bool Ink(byte[] src, int o)
+        {
+            if (src[o + 3] < 128) return false;
+            int b = src[o], g = src[o + 1], r = src[o + 2];
+            if (r + g + b < 12) return false;
+            if (r > 210 && g > 175 && b < 70) return false;
+            return true;
         }
 
         public static IconHit Match(List<IconRef> icons, byte[] crop, int width, int height, double minimum)
         {
             IconHit hit = new IconHit();
             if (icons == null || crop == null || width < 2) return hit;
-            byte[] small = new byte[32 * 32 * 4];
-            for (int y = 0; y < 32; y++)
-                for (int x = 0; x < 32; x++)
-                {
-                    int sx = Math.Min(width - 1, x * width / 32);
-                    int sy = Math.Min(height - 1, y * height / 32);
-                    int from = (sy * width + sx) * 4;
-                    int to = (y * 32 + x) * 4;
-                    Buffer.BlockCopy(crop, from, small, to, 4);
-                    int r = small[to + 2], g = small[to + 1], b = small[to];
-                    if (r > 210 && g > 175 && b < 70) small[to + 3] = 0;
-                }
+            byte[] prepared = Noted.CleanForDisplay(crop, width, height);
+            byte[] query = Normalize(prepared, width, height);
             foreach (IconRef icon in icons)
             {
-                if (icon.Samples.Count < 12) continue;
+                if (icon.Patch == null) continue;
                 int sad = 0, n = 0;
-                for (int s = 0; s < icon.Samples.Count; s += 5)
+                int pixels = query.Length / 4;
+                for (int p = 0; p < pixels; p++)
                 {
-                    int x = icon.Samples[s], y = icon.Samples[s + 1];
-                    int i = (y * 32 + x) * 4;
-                    if (small[i + 3] < 128) continue;
-                    sad += Math.Abs(small[i + 2] - icon.Samples[s + 2]) + Math.Abs(small[i + 1] - icon.Samples[s + 3]) + Math.Abs(small[i] - icon.Samples[s + 4]);
+                    int i = p * 4;
+                    if (icon.Patch[i + 3] < 128 || query[i + 3] < 128) continue;
+                    sad += Math.Abs(query[i + 2] - icon.Patch[i + 2]) + Math.Abs(query[i + 1] - icon.Patch[i + 1]) + Math.Abs(query[i] - icon.Patch[i]);
                     n++;
                 }
-                if (n < 12) continue;
+                if (n < 16) continue;
                 double score = 1.0 - sad / (n * 765.0);
                 string group = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
                 string best = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
@@ -123,7 +186,10 @@ namespace Chest
                 }
                 else if (group != best && score > hit.Second) hit.Second = score;
             }
-            hit.Known = hit.Score >= minimum && hit.Score - hit.Second >= 0.03;
+            double margin = hit.Score - hit.Second;
+            hit.Known = hit.Score >= minimum && margin >= 0.03;
+            if (!hit.Known && hit.Score >= minimum && hit.Score >= 0.945 && margin >= 0.012) hit.Known = true;
+            hit.Candidate = hit.Name;
             if (!hit.Known) { hit.Name = "Unknown"; hit.Group = ""; }
             return hit;
         }

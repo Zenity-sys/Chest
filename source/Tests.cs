@@ -324,6 +324,7 @@ namespace Chest
             long[] stepValue = new long[3];
             int step = 0;
             int named = 0, unknown = 0;
+            System.Text.StringBuilder misses = new System.Text.StringBuilder();
             for (int i = 0; i < 6; i++)
             {
                 Frame frame = FramePng.Decode(Path.Combine(root, "fixtures", "master-" + i + ".png"));
@@ -334,24 +335,37 @@ namespace Chest
                 if (step < 3)
                 {
                     stepValue[step] = shot.Value;
-                    foreach (SeenItem item in shot.Items) Absorb(steps[step], Shown(icons, item, out named, out unknown));
+                    foreach (SeenItem item in shot.Items)
+                    {
+                        int ignoreA, ignoreB;
+                        Absorb(steps[step], Shown(icons, item, out ignoreA, out ignoreB));
+                    }
                     step++;
                 }
                 foreach (SeenItem item in shot.Items)
                 {
-                    int ignoreA = 0, ignoreB = 0;
-                    Absorb(all, Shown(icons, item, out ignoreA, out ignoreB));
+                    int gotName = 0, gotUnknown = 0;
+                    SlotView shown = Shown(icons, item, out gotName, out gotUnknown);
+                    named += gotName;
+                    unknown += gotUnknown;
+                    if (gotUnknown > 0)
+                    {
+                        IconHit missed = IconLibrary.Match(icons, item.Bgra, item.Width, item.Height, 0.90);
+                        misses.Append(" m").Append(i).Append(":").Append(missed.Candidate).Append("@").Append(missed.Score.ToString("0.00")).Append("/").Append(missed.Second.ToString("0.00"));
+                    }
+                    Absorb(all, shown);
                 }
             }
+            Check(named >= 28 && unknown <= 3, "master rewards use wiki names (" + named + " named, " + unknown + " unknown" + misses + ")");
             Check(all.Count >= 5, "real reward crops matched into the grid (" + all.Count + ")");
             long session = 0;
             int[] values = new int[] { 210202, 210202, 253106, 69414, 23215, 97021 };
             List<long> opens = new List<long>();
             for (int i = 0; i < values.Length; i++) { session += values[i]; opens.Add(values[i]); }
             ChestFace.LoadCrest(Path.Combine(root, "assets", "branding", "kavros-crest.png"));
-            RenderOverlay(all, "grid", session, 6, "/opt/cursor/artifacts/overlay-grid.png", opens);
-            RenderOverlay(all, "list", session, 6, "/opt/cursor/artifacts/overlay-list.png", opens);
-            RenderOverlay(all, "grid", session, 6, Path.Combine(Path.GetTempPath(), "chest-preview", "real-grid.png"), opens);
+            RenderOverlay(all, "grid", session, 6, "/opt/cursor/artifacts/overlay-grid.png", opens, 560);
+            RenderOverlay(all, "list", session, 6, "/opt/cursor/artifacts/overlay-list.png", opens, 860);
+            RenderOverlay(all, "grid", session, 6, Path.Combine(Path.GetTempPath(), "chest-preview", "real-grid.png"), opens, 560);
             RenderChrome(root, session, opens);
             if (steps[0].Count > 0 && steps[1].Count > 0 && steps[2].Count > 0)
             {
@@ -384,7 +398,6 @@ namespace Chest
             named = 0;
             unknown = 0;
             byte[] pixels = item.Bgra;
-            if (Noted.LooksNoted(pixels, item.Width, item.Height)) pixels = Noted.WithoutPaper(pixels, item.Width, item.Height);
             IconHit hit = IconLibrary.Match(icons, pixels, item.Width, item.Height, 0.90);
             SlotView slot = new SlotView();
             slot.Quantity = item.Quantity;
@@ -448,11 +461,11 @@ namespace Chest
             return image;
         }
 
-        static void RenderOverlay(List<SlotView> slots, string mode, long value, int caskets, string path, List<long> opens)
+        static void RenderOverlay(List<SlotView> slots, string mode, long value, int caskets, string path, List<long> opens, int height)
         {
             try
             {
-                using (Bitmap bitmap = new Bitmap(420, 560))
+                using (Bitmap bitmap = new Bitmap(420, height))
                 using (Graphics g = Graphics.FromImage(bitmap))
                 {
                     string detail = "Opening " + caskets;
@@ -465,7 +478,7 @@ namespace Chest
 
         static void RenderOverlay(List<SlotView> slots, string mode, long value, int caskets, string path)
         {
-            RenderOverlay(slots, mode, value, caskets, path, null);
+            RenderOverlay(slots, mode, value, caskets, path, null, 560);
         }
 
         static void RenderChrome(string root, long value, List<long> opens)

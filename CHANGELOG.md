@@ -2,6 +2,7 @@
 
 - The window matches the Kavros Chest design: navy and gold, the Kavros crest, a splash screen, and a settings window.
 - The chest lists every item from the current session. Grid and List switch in the overlay and in Settings.
+- Reward icons are the clean wiki sprites. A screen crop is kept only when nothing on the reward lists matches.
 - Grid icons sit on the dark panel with a yellow count. List rows show the icon, the name, and the quantity. Hovering an icon shows its name and count.
 - A screen crop, used only when no sprite exists, drops the slot behind it and the yellow stack digit in the corner.
 - History lists each logged casket. Undo, Unknown, and Debug stay on the panel.

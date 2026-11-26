@@ -607,9 +607,8 @@ namespace Chest
                 LootLine line = new LootLine();
                 byte[] pixels = item.Bgra;
                 int pw = item.Width, ph = item.Height;
-                if (Noted.LooksNoted(pixels, pw, ph)) pixels = Noted.WithoutPaper(pixels, pw, ph);
                 byte[] cleaned = Noted.CleanForDisplay(pixels, pw, ph);
-                IconHit hit = IconLibrary.Match(icons, cleaned, pw, ph, layout.IconMatch);
+                IconHit hit = IconLibrary.Match(icons, pixels, pw, ph, layout.IconMatch);
                 byte[] sig = IconLibrary.Signature(cleaned, pw, ph);
                 line.Quantity = item.Quantity;
                 int knownLook = FindLook(sig);

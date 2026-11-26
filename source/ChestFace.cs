@@ -253,7 +253,7 @@ namespace Chest
             DrawFlat(g, new Rectangle(bounds.Right - 30, bounds.Y + 5, 22, 22), "−", false, false, false);
             Rectangle body = new Rectangle(bounds.X, bounds.Y + 30, bounds.Width, Math.Max(80, bounds.Height - 30));
             int count = slots == null ? 0 : slots.Count;
-            if (string.IsNullOrEmpty(tip) && slots != null && count > 0 && !history)
+            if (string.IsNullOrEmpty(tip) && mode != "list" && slots != null && count > 0 && !history)
             {
                 FaceLayout face = Measure(body, mode, 32, count, false, 0);
                 tip = slots[0].Name + " × " + slots[0].Quantity.ToString(CultureInfo.InvariantCulture);
