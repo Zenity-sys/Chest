@@ -136,6 +136,26 @@ namespace Chest
                 Buffer.BlockCopy(Bgra, ((area.Y + y) * Width + area.X) * 4, data, y * area.Width * 4, area.Width * 4);
             return new Frame(data, area.Width, area.Height);
         }
+
+        // Paint Chest's own panel out of a capture so it cannot hide the reward.
+        public void Cover(Rectangle local)
+        {
+            local = Rectangle.Intersect(local, new Rectangle(0, 0, Width, Height));
+            if (local.Width < 1 || local.Height < 1 || Bgra == null) return;
+            int sx = local.Left > 1 ? local.Left - 2 : Math.Min(Width - 1, local.Right);
+            int sy = Math.Max(0, Math.Min(Height - 1, local.Top + local.Height / 2));
+            int sample = (sy * Width + sx) * 4;
+            byte b = Bgra[sample], g = Bgra[sample + 1], r = Bgra[sample + 2], a = Bgra[sample + 3];
+            for (int y = local.Top; y < local.Bottom; y++)
+                for (int x = local.Left; x < local.Right; x++)
+                {
+                    int i = (y * Width + x) * 4;
+                    Bgra[i] = b;
+                    Bgra[i + 1] = g;
+                    Bgra[i + 2] = r;
+                    Bgra[i + 3] = a;
+                }
+        }
     }
 
     internal static class ScreenCapture

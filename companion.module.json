@@ -1,0 +1,10 @@
+{
+  "id": "chest",
+  "name": "Kavros Chest",
+  "author": "Zenity",
+  "version": "0.5.0",
+  "summary": "Logs clue casket rewards from the reward window.",
+  "repository": "https://github.com/Zenity-sys/Chest",
+  "executable": "Chest.exe",
+  "singleInstance": "Chest.RewardLogger"
+}

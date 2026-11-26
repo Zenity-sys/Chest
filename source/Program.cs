@@ -15,6 +15,10 @@ namespace Chest
             NetSecurity.EnableModernTls();
             if (args.Length > 0 && args[0] == "--test")
                 return Tests.Run(args.Length > 1 ? args[1] : null);
+            ClientLaunch.ReadArgs(args);
+            ClientLaunch.ReadEnvironment();
+            ClientLaunch.ReadRequest();
+            ClientLaunch.WriteRequest();
             AppPaths.Prepare();
             try { AppUpdates.Start(); }
             catch (Exception startup) { CrashLog.Write(startup); }

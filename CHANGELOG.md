@@ -1,3 +1,8 @@
+## Unreleased
+
+- Each client uses its own resolution and DPI. After the reward window is found, later reads stay on that region.
+- Chest paints its own panel out of the capture. Companion can open it with a client handle, a process id, or bind.txt.
+
 ## 0.5.0
 
 - The window matches the Kavros Chest design: navy and gold, the Kavros crest, a splash screen, and a settings window.

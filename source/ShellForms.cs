@@ -8,6 +8,7 @@ namespace Chest
     internal sealed class SplashForm : Form
     {
         public Action OpenClicked;
+        public float UiScale = 1F;
         public SplashForm()
         {
             FormBorderStyle = FormBorderStyle.None;
@@ -23,7 +24,11 @@ namespace Chest
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            ChestFace.DrawSplash(e.Graphics, ClientRectangle);
+            if (UiScale <= 1.01F) { ChestFace.DrawSplash(e.Graphics, ClientRectangle); return; }
+            e.Graphics.ScaleTransform(UiScale, UiScale);
+            int w = Math.Max(1, (int)(ClientSize.Width / UiScale));
+            int h = Math.Max(1, (int)(ClientSize.Height / UiScale));
+            ChestFace.DrawSplash(e.Graphics, new Rectangle(0, 0, w, h));
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
@@ -49,6 +54,7 @@ namespace Chest
         public Func<int> Opened;
         public Func<long> SessionValue;
         public Func<IList<long>> Opens;
+        public float UiScale = 1F;
 
         public SettingsForm(ComboBox windows)
         {
@@ -101,6 +107,14 @@ namespace Chest
             int opened = Opened == null ? 0 : Opened();
             long value = SessionValue == null ? 0 : SessionValue();
             IList<long> opens = Opens == null ? null : Opens();
+            if (UiScale > 1.01F)
+            {
+                e.Graphics.ScaleTransform(UiScale, UiScale);
+                int w = Math.Max(1, (int)(ClientSize.Width / UiScale));
+                int h = Math.Max(1, (int)(ClientSize.Height / UiScale));
+                ChestFace.DrawSettings(e.Graphics, new Rectangle(0, 0, w, h), client, mode != "list", opened, value, opens);
+                return;
+            }
             ChestFace.DrawSettings(e.Graphics, ClientRectangle, client, mode != "list", opened, value, opens);
         }
 

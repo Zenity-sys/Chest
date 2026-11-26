@@ -26,6 +26,7 @@ namespace Chest
             Preview(root);
             RealRewards(root);
             Pipeline(root);
+            Adapt(root);
             Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
             return failed == 0 ? 0 : 1;
         }
@@ -568,6 +569,127 @@ namespace Chest
                     if (File.Exists(Path.Combine(dir.FullName, "fixtures", "master-1.png"))) return dir.FullName;
             }
             return null;
+        }
+
+        static void Adapt(string root)
+        {
+            Check(ClientScale.ResolutionBucket(1386) == 1440 && ClientScale.ResolutionName(1440) == "1440p", "1386px is 1440p");
+            Check(ClientScale.ResolutionBucket(1080) == 1080 && ClientScale.ResolutionBucket(2160) == 2160, "1080p and 4K buckets");
+            Check(ClientScale.ScalingPercent(96) == 100 && ClientScale.ScalingPercent(120) == 125 && ClientScale.ScalingPercent(144) == 150 && ClientScale.ScalingPercent(192) == 200, "dpi snaps to 100, 125, 150 and 200");
+            RewardReader.Use(1386, 96);
+            Check(RewardReader.Profile.Px(396) == 396 && RewardReader.Profile.Px(239) == 239, "1440p at 100% keeps the measured panel");
+            RewardReader.Use(1080, 96);
+            Check(RewardReader.Profile.Px(396) == 297, "1080p is three quarters of the measured panel (" + RewardReader.Profile.Px(396) + ")");
+            RewardReader.Use(2160, 144);
+            Check(RewardReader.Profile.Percent == 150 && RewardReader.Profile.Px(396) == 891, "4K at 150% scales the panel (" + RewardReader.Profile.Px(396) + ")");
+            RewardReader.Use(1440, 96);
+
+            CaptureFollow follow = new CaptureFollow();
+            Rectangle full = follow.Choose(new Size(2560, 1440), Rectangle.Empty);
+            Check(full.Width == 2560 && full.Height == 1440, "the first grab is the whole client");
+            Rectangle hit = new Rectangle(1000, 500, 396, 239);
+            Rectangle roi = follow.Choose(new Size(2560, 1440), hit);
+            Check(roi.X == hit.X - 80 && roi.Y == hit.Y - 80 && roi.Width == 396 + 160, "a hit is followed with padding");
+            follow.Note(false); follow.Note(false); follow.Note(false);
+            Rectangle still = follow.Choose(new Size(2560, 1440), hit);
+            Check(still.Width < 2560, "three misses stay on the region");
+            follow.Note(false);
+            Rectangle again = follow.Choose(new Size(2560, 1440), hit);
+            Check(again.Width == 2560, "the fourth miss returns to the full client");
+            CaptureFollow resized = new CaptureFollow();
+            resized.Choose(new Size(1920, 1080), Rectangle.Empty);
+            resized.Choose(new Size(1920, 1080), hit);
+            Rectangle grown = resized.Choose(new Size(2560, 1440), hit);
+            Check(grown.Width == 2560, "a resize goes back to the full client");
+
+            Frame covered = new Frame(new byte[40 * 30 * 4], 40, 30);
+            for (int i = 0; i < covered.Bgra.Length; i += 4) { covered.Bgra[i] = 10; covered.Bgra[i + 1] = 20; covered.Bgra[i + 2] = 30; covered.Bgra[i + 3] = 255; }
+            for (int y = 8; y < 20; y++)
+                for (int x = 8; x < 24; x++)
+                {
+                    int o = (y * 40 + x) * 4;
+                    covered.Bgra[o + 2] = 232;
+                }
+            covered.Cover(new Rectangle(8, 8, 16, 12));
+            Check(covered.Bgra[(10 * 40 + 10) * 4 + 2] == 30, "the overlay rectangle is painted out of the capture");
+
+            Check(OverlayVisibility.CoveredByOtherClient(new IntPtr(1), new IntPtr(2), "Kavros"), "another client covers the panel");
+            Check(!OverlayVisibility.CoveredByOtherClient(new IntPtr(1), new IntPtr(1), "Kavros"), "our own client stays visible");
+
+            ClientLaunch.Reset();
+            ClientLaunch.ReadArgs(new string[] { "--hwnd", "4567", "--pid=89" });
+            Check(ClientLaunch.Hwnd == 4567 && ClientLaunch.Pid == 89, "hwnd and pid arguments bind the client");
+            ClientLaunch.Reset();
+            Environment.SetEnvironmentVariable("COMPANION_CLIENT_HWND", "321");
+            Environment.SetEnvironmentVariable("COMPANION_CLIENT_PID", "12");
+            ClientLaunch.ReadEnvironment();
+            Check(ClientLaunch.Hwnd == 321 && ClientLaunch.Pid == 12, "companion environment binds the client");
+            Environment.SetEnvironmentVariable("COMPANION_CLIENT_HWND", null);
+            Environment.SetEnvironmentVariable("COMPANION_CLIENT_PID", null);
+            string bindDir = Path.Combine(Path.GetTempPath(), "chest-bind-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(bindDir);
+            ClientLaunch.BindDirectory = bindDir;
+            ClientLaunch.Hwnd = 77;
+            ClientLaunch.Pid = 8;
+            ClientLaunch.WriteRequest();
+            ClientLaunch.Reset();
+            ClientLaunch.ReadRequest();
+            Check(ClientLaunch.Hwnd == 77 && ClientLaunch.Pid == 8 && !File.Exists(Path.Combine(bindDir, "bind.txt")), "bind.txt locks the client once");
+            ClientLaunch.Reset();
+            ClientLaunch.BindDirectory = null;
+            string module = File.ReadAllText(Path.Combine(root, "companion.module.json"));
+            Check(module.IndexOf("\"id\": \"chest\"") >= 0 && module.IndexOf("Chest.exe") >= 0, "companion module contract");
+
+            RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
+            Frame master = FramePng.Decode(Path.Combine(root, "fixtures", "master-0.png"));
+            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            Rectangle panel = RewardReader.Find(master);
+            long fullMs = clock.ElapsedMilliseconds;
+            Rectangle cropArea = Rectangle.Inflate(panel, 80, 80);
+            cropArea = Rectangle.Intersect(cropArea, new Rectangle(0, 0, master.Width, master.Height));
+            Frame crop = master.Crop(cropArea);
+            clock.Restart();
+            Rectangle againPanel = RewardReader.Find(crop);
+            long regionMs = clock.ElapsedMilliseconds;
+            Check(!panel.IsEmpty && !againPanel.IsEmpty, "region follow still sees TRAIL COMPLETE (" + fullMs + " ms full, " + regionMs + " ms region)");
+
+            Frame scaled = ScaleFrame(FramePng.Decode(Path.Combine(root, "fixtures", "master-1.png")), 3, 2);
+            RewardReader.Use(2160, 96);
+            Rectangle scaledPanel = RewardReader.Find(scaled);
+            Check(!scaledPanel.IsEmpty && scaledPanel.Width == RewardReader.Profile.Px(396), "a 150% frame uses the scaled panel (" + scaledPanel.Width + ")");
+            RewardReader.Use(1440, 96);
+
+            string gridPath = "/opt/cursor/artifacts/overlay-grid.png";
+            if (File.Exists(gridPath))
+            {
+                using (Bitmap source = new Bitmap(gridPath))
+                using (Bitmap big = new Bitmap(source.Width * 3 / 2, source.Height * 3 / 2))
+                using (Graphics g = Graphics.FromImage(big))
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                    g.DrawImage(source, new Rectangle(0, 0, big.Width, big.Height), new Rectangle(0, 0, source.Width, source.Height), GraphicsUnit.Pixel);
+                    big.Save("/opt/cursor/artifacts/overlay-grid-150.png", System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            Check(true, "150% grid preview saved");
+        }
+
+        static Frame ScaleFrame(Frame source, int num, int den)
+        {
+            int w = source.Width * num / den;
+            int h = source.Height * num / den;
+            byte[] data = new byte[w * h * 4];
+            for (int y = 0; y < h; y++)
+            {
+                int sy = Math.Min(source.Height - 1, y * den / num);
+                for (int x = 0; x < w; x++)
+                {
+                    int sx = Math.Min(source.Width - 1, x * den / num);
+                    Buffer.BlockCopy(source.Bgra, (sy * source.Width + sx) * 4, data, (y * w + x) * 4, 4);
+                }
+            }
+            return new Frame(data, w, h);
         }
 
         static void Check(bool ok, string name)
