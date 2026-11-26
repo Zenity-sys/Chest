@@ -24,7 +24,14 @@ namespace Chest
 
         public static bool Shown(bool gameExists, bool minimised, bool gameForeground, bool panelFocused)
         {
+            return Shown(gameExists, minimised, gameForeground, panelFocused, false);
+        }
+
+        // Settings sits beside the overlay. Opening it must not hide the overlay.
+        public static bool Shown(bool gameExists, bool minimised, bool gameForeground, bool panelFocused, bool settingsOpen)
+        {
             if (!gameExists || minimised) return false;
+            if (settingsOpen) return true;
             return gameForeground || panelFocused;
         }
 

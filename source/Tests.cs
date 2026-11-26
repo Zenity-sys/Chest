@@ -29,6 +29,7 @@ namespace Chest
             RealRewards(root);
             Pipeline(root);
             Adapt(root);
+            Hold(root);
             Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
             return failed == 0 ? 0 : 1;
         }
@@ -61,16 +62,32 @@ namespace Chest
             Check(repeats == 1 && held.See(true, 5, "jitter-" + repeats) == "none", "the same open window logged 100 times is one casket");
 
             RewardSession inplace = new RewardSession();
+            int place = 0;
+            inplace.Clock = delegate { return place; };
             string stay = inplace.See(true, 5, "casket-a");
             string againSame = inplace.See(true, 5, "casket-a");
+            place = 10;
             string half = inplace.See(true, 5, "casket-b-partial");
+            place = 20;
             string next = inplace.See(true, 5, "casket-b");
+            place = 30;
+            string early = inplace.See(true, 5, "casket-b");
+            place = 230;
+            string armed = inplace.See(true, 5, "casket-b");
+            place = 240;
             string settled = inplace.See(true, 5, "casket-b");
+            place = 250;
             string heldOpen = inplace.See(true, 5, "casket-b");
-            Check(stay == "opened" && againSame == "none" && half == "none" && next == "none" && settled == "opened" && heldOpen == "none", "an in-place casket counts once the new read settles");
+            Check(stay == "opened" && againSame == "none" && half == "none" && next == "none" && early == "none" && armed == "none" && settled == "opened" && heldOpen == "none", "an in-place casket counts once the new read settles");
+            place = 300;
             string raised = inplace.See(true, 6, "casket-c");
+            place = 310;
+            string raisedMid = inplace.See(true, 6, "casket-c");
+            place = 520;
+            string raisedArmed = inplace.See(true, 6, "casket-c");
+            place = 530;
             string raisedAgain = inplace.See(true, 6, "casket-c");
-            Check(raised == "none" && raisedAgain == "opened", "n going up on the same window is a new casket");
+            Check(raised == "none" && raisedMid == "none" && raisedArmed == "none" && raisedAgain == "opened", "n going up on the same window is a new casket");
             string reroll = inplace.See(true, 5, "casket-c-reroll");
             Check(reroll == "replaced", "n dropping by one on the same window is still a reroll");
 
@@ -88,9 +105,12 @@ namespace Chest
             Check(open == "opened" && swap == "replaced" && hold == "none" && Count(open, swap, hold) == 1, "a 5 to 4 reroll replaces the same casket");
 
             RewardSession refilled = new RewardSession();
+            int refilledNow = 0;
+            refilled.Clock = delegate { return refilledNow; };
             string low = refilled.See(true, 3, "old");
+            refilledNow = 40;
             refilled.See(false, -1, null);
-            refilled.See(false, -1, null);
+            refilledNow = 560;
             refilled.See(false, -1, null);
             string up = refilled.See(true, 4, "new");
             Check(low == "opened" && up == "opened" && Count(low, up) == 2, "n going from 3 to 4 is a new casket");
@@ -100,6 +120,8 @@ namespace Chest
             Check(FloatingPanelLayout.WantTopMost(true, false, true, false), "topmost while the game is in front");
             Check(!FloatingPanelLayout.WantTopMost(true, false, false, false), "not topmost over another app");
             Check(FloatingPanelLayout.Shown(true, false, false, true), "the panel stays while it is being used");
+            Check(FloatingPanelLayout.Shown(true, false, false, false, true), "settings keeps the overlay open beside it");
+            Check(!FloatingPanelLayout.Shown(true, false, false, false), "another app hides the overlay");
             Check(!FloatingPanelLayout.Shown(true, true, true, true), "a minimised client hides the panel");
             Check(StackText.Format(1089) == "1089" && StackText.Format(10000) == "10K" && StackText.Format(100000) == "100K" && StackText.Format(1200000) == "1.2M", "stack numbers use K and M");
             int columns = ChestFace.Columns(440, 32, 12);
@@ -388,7 +410,7 @@ namespace Chest
             string dir = Path.Combine(Path.GetTempPath(), "chest-pipe-" + Guid.NewGuid().ToString("N"));
             LootBook book = new LootBook(dir);
             RewardSession session = new RewardSession();
-            session.MissesBeforeClose = 3;
+            session.MissesBeforeClose = 8;
             System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
             long first = 0;
             for (int i = 0; i < 6; i++)
@@ -403,18 +425,19 @@ namespace Chest
                 RewardShot shot = RewardReader.Read(frame, panel, stack, value);
                 Check(shot.Items.Count > 0, "pipeline reads items in master-" + i + " (" + shot.Items.Count + ")");
                 if (i > 0)
-                {
-                    session.See(false, -1, null);
-                    session.See(false, -1, null);
-                    session.See(false, -1, null);
-                }
-                string action = session.See(true, RewardReader.RerollCount(frame, panel), shot.Fingerprint);
-                Check(action == "opened", "pipeline logs master-" + i + " as a new casket (" + action + ")");
+                    for (int miss = 0; miss < session.MissesBeforeClose; miss++)
+                        session.See(false, -1, null);
+                int charges = RewardReader.RerollCount(frame, panel);
+                string action = session.See(true, charges, shot.Fingerprint);
+                string wanted = i >= 4 ? "replaced" : "opened";
+                Check(action == wanted, "pipeline logs master-" + i + " as " + wanted + " (" + action + ")");
                 if (action == "opened")
                     book.Commit(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
+                else if (action == "replaced")
+                    book.ReplaceLast(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
             }
             clock.Stop();
-            Check(book.Caskets == 6, "pipeline logged six caskets (" + book.Caskets + ")");
+            Check(book.Caskets == 4, "pipeline keeps the two rerolls on the open count (" + book.Caskets + ")");
             Check(first > 0 && first < 800, "full client master-0 is read in " + first + " ms");
             Check(clock.ElapsedMilliseconds < 2500, "all six reward shots are read in " + clock.ElapsedMilliseconds + " ms");
             try { Directory.Delete(dir, true); } catch (Exception) { }
@@ -669,6 +692,204 @@ namespace Chest
             }
             RewardShot shot = RewardReader.Read(frame, new Rectangle(0, 0, 396, 239), new List<Glyph>(), glyphs);
             return shot.Value;
+        }
+
+        static void Hold(string root)
+        {
+            RewardReader.Use(1440, 96);
+            string mark = "2715|air-talismanx1|air-runex150|off-hand-black-crossbowx1|fire-talismanx1";
+            RewardSession session = new RewardSession();
+            int now = 0;
+            session.Clock = delegate { return now; };
+            int opens = 0;
+            if (session.See(true, 5, mark) == "opened") opens++;
+            if (session.See(true, 5, mark) == "opened") opens++;
+            for (int i = 0; i < 40; i++)
+                if (session.See(true, 5, mark) == "opened") opens++;
+            Check(opens == 1, "an unchanged open casket is counted once (" + opens + ")");
+            now = 50;
+            string blink = session.See(false, -1, null);
+            now = 110;
+            string blinkAgain = session.See(false, -1, null);
+            string back = session.See(true, 5, mark);
+            Check(blink == "none" && blinkAgain == "none" && back == "none", "a 100 ms blink does not count the casket again");
+
+            RewardSession frames = new RewardSession();
+            int frozen = 10;
+            frames.Clock = delegate { return frozen; };
+            frames.See(true, 5, mark);
+            string missed = "none";
+            for (int i = 0; i < 7; i++) missed = frames.See(false, -1, null);
+            Check(missed == "none" && frames.Open, "seven missed frames stay open");
+            missed = frames.See(false, -1, null);
+            Check(missed == "closed" && !frames.Open, "eight missed frames close the window");
+
+            RewardSession closed = new RewardSession();
+            int later = 0;
+            closed.Clock = delegate { return later; };
+            Check(closed.See(true, 5, mark) == "opened", "a casket opens");
+            later = 30;
+            closed.See(false, -1, null);
+            later = 560;
+            string shut = closed.See(false, -1, null);
+            string reopen = closed.See(true, 5, mark);
+            string held = closed.See(true, 5, mark);
+            Check(shut == "closed" && reopen == "opened" && held == "none", "a 500 ms close counts the next open once");
+
+            RewardSession gap = new RewardSession();
+            int gapNow = 0;
+            gap.Clock = delegate { return gapNow; };
+            string gapOpen = gap.See(true, 5, "loot");
+            gapNow = 20;
+            gap.See(false, -1, null);
+            gapNow = 620;
+            string gapShut = gap.See(false, -1, null);
+            string gapBack = gap.See(true, 4, "loot-reroll");
+            Check(gapOpen == "opened" && gapShut == "closed" && gapBack == "replaced", "a reroll after a 600 ms blink replaces the casket");
+
+            RewardSession earlyRoll = new RewardSession();
+            string rollOpen = earlyRoll.See(true, 5, "loot");
+            string rollHalf = earlyRoll.See(true, 5, "loot-new");
+            string rollDrop = earlyRoll.See(true, 4, "loot-new");
+            string rollHold = earlyRoll.See(true, 4, "loot-new");
+            Check(rollOpen == "opened" && rollHalf == "none" && rollDrop == "replaced" && rollHold == "none", "items that change before n drops still replace the casket");
+
+            RewardSession sameN = new RewardSession();
+            int sameNow = 0;
+            sameN.Clock = delegate { return sameNow; };
+            string sameOpen = sameN.See(true, 5, "first");
+            sameNow = 10;
+            sameN.See(true, 5, "second");
+            sameNow = 20;
+            sameN.See(true, 5, "second");
+            sameNow = 230;
+            sameN.See(true, 5, "second");
+            sameNow = 240;
+            string sameSettled = sameN.See(true, 5, "second");
+            string sameStay = sameN.See(true, 5, "second");
+            Check(sameOpen == "opened" && sameSettled == "opened" && sameStay == "none", "the same reroll number with new items is a new casket");
+
+            RewardSession higher = new RewardSession();
+            int highNow = 0;
+            higher.Clock = delegate { return highNow; };
+            string highOpen = higher.See(true, 4, "low");
+            highNow = 10;
+            higher.See(true, 5, "high");
+            highNow = 20;
+            higher.See(true, 5, "high");
+            highNow = 230;
+            higher.See(true, 5, "high");
+            highNow = 240;
+            string highSettled = higher.See(true, 5, "high");
+            Check(highOpen == "opened" && highSettled == "opened", "n going up is a new casket");
+
+            Check(!CaptureFollow.MissCounts(true, false, true), "a region miss that the full client still shows is not a close");
+            Check(CaptureFollow.MissCounts(true, false, false), "a miss on the full client counts toward a close");
+            Check(!CaptureFollow.MissCounts(false, true, false), "a grab that found the title is not a close");
+
+            List<IconRef> icons = IconLibrary.Load(Path.Combine(root, "assets", "icons"), Path.Combine(root, "assets", "icons", "catalog.txt"));
+            List<Glyph> stack = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "stack.txt"));
+            List<Glyph> value = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "value.txt"));
+            RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
+            Frame shot = FramePng.Decode(Path.Combine(root, "fixtures", "master-1.png"));
+            Frame moved = Shift(shot, 3, 2);
+            Check(shot != null && moved != null, "shifted reward loads");
+            if (shot != null && moved != null)
+            {
+                Rectangle panel = RewardReader.Find(shot);
+                Rectangle movedPanel = RewardReader.Find(moved);
+                RewardShot left = RewardReader.Read(shot, panel, stack, value);
+                RewardShot right = RewardReader.Read(moved, movedPanel, stack, value);
+                Name(icons, left);
+                Name(icons, right);
+                string leftMark = RewardReader.Semantic(left.Value, left.Items);
+                string rightMark = RewardReader.Semantic(right.Value, right.Items);
+                bool movedPixels = left.Items.Count > 0 && right.Items.Count > 0 && left.Items[0].X != right.Items[0].X;
+                Check(left.Items.Count == right.Items.Count && leftMark == rightMark && movedPixels, "a shifted grab keeps the same casket (" + leftMark + " / " + rightMark + ")");
+                RewardSession live = new RewardSession();
+                string opened = live.See(true, 5, leftMark);
+                string again = live.See(true, 5, rightMark);
+                Check(opened == "opened" && again == "none", "a shifted grab does not count the casket again");
+            }
+
+            Check(StackOnRune(root, stack) == 150, "150 on an air rune reads 150 (" + StackOnRune(root, stack) + ")");
+        }
+
+        static void Name(List<IconRef> icons, RewardShot shot)
+        {
+            foreach (SeenItem item in shot.Items)
+            {
+                IconHit hit = IconLibrary.Match(icons, item.Bgra, item.Width, item.Height, 0.90);
+                if (!hit.Known) continue;
+                item.Named = true;
+                item.Name = hit.Name;
+                item.Key = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
+            }
+        }
+
+        static Frame Shift(Frame src, int dx, int dy)
+        {
+            if (src == null) return null;
+            int width = src.Width + dx, height = src.Height + dy;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 14; data[i + 1] = 22; data[i + 2] = 16; data[i + 3] = 255; }
+            for (int y = 0; y < src.Height; y++)
+                Buffer.BlockCopy(src.Bgra, y * src.Width * 4, data, ((y + dy) * width + dx) * 4, src.Width * 4);
+            return new Frame(data, width, height);
+        }
+
+        static int StackOnRune(string root, List<Glyph> glyphs)
+        {
+            Frame rune = FramePng.Decode(Path.Combine(root, "assets", "icons", "air-rune.png"));
+            if (rune == null || glyphs == null) return -1;
+            int width = 72, height = 52, ox = 8, oy = 10;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 18; data[i + 1] = 28; data[i + 2] = 36; data[i + 3] = 255; }
+            for (int y = 0; y < rune.Height; y++)
+                for (int x = 0; x < rune.Width; x++)
+                {
+                    int from = (y * rune.Width + x) * 4;
+                    if (rune.Bgra[from + 3] < 16) continue;
+                    int to = ((oy + y) * width + (ox + x)) * 4;
+                    data[to] = rune.Bgra[from];
+                    data[to + 1] = rune.Bgra[from + 1];
+                    data[to + 2] = rune.Bgra[from + 2];
+                    data[to + 3] = 255;
+                }
+            int penX = ox;
+            string number = "150";
+            foreach (char digit in number)
+            {
+                Glyph glyph = null;
+                foreach (Glyph candidate in glyphs) if (candidate.Value == digit) glyph = candidate;
+                if (glyph == null) return -1;
+                for (int y = 0; y < glyph.Height; y++)
+                    for (int x = 0; x < glyph.Width; x++)
+                    {
+                        if (!glyph.On[y * glyph.Width + x]) continue;
+                        Paint(data, width, height, penX + x + 1, oy + y + 1, 16, 12, 12);
+                        Paint(data, width, height, penX + x, oy + y, 52, 187, 250);
+                    }
+                penX += glyph.Width + 1;
+            }
+            Frame frame = new Frame(data, width, height);
+            try { FramePng.Save(frame, "/opt/cursor/artifacts/air-rune-150.png"); } catch (Exception) { }
+            SeenItem item = new SeenItem();
+            item.X = ox;
+            item.Y = oy;
+            item.Width = rune.Width;
+            item.Height = rune.Height;
+            return RewardReader.ReadStack(frame, item, glyphs);
+        }
+
+        static void Paint(byte[] data, int width, int height, int x, int y, byte b, byte g, byte r)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height) return;
+            int i = (y * width + x) * 4;
+            data[i] = b;
+            data[i + 1] = g;
+            data[i + 2] = r;
+            data[i + 3] = 255;
         }
 
         static string FindRoot()

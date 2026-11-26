@@ -17,6 +17,9 @@ namespace Chest
     {
         public int X, Y, Width, Height, Quantity;
         public byte[] Bgra;
+        public string Key = "";
+        public string Name = "";
+        public bool Named;
     }
 
     internal sealed class RewardShot
@@ -127,35 +130,23 @@ namespace Chest
             return gold;
         }
 
-        public static string Fingerprint(Frame frame, Rectangle panel)
+        // Item names, quantities, and the casket value. Pixel position is not part of it,
+        // so a shifted grab of the same reward stays the same casket.
+        public static string Semantic(int value, IList<SeenItem> items)
         {
-            ulong hash = 1469598103934665603UL;
-            int top = panel.Y + Px(46), bottom = panel.Y + Px(90), left = panel.X + Px(16), right = panel.X + Px(378);
-            for (int y = top; y < bottom; y += 3)
-                for (int x = left; x < right; x += 3)
-                {
-                    int r, g, b;
-                    frame.Get(x, y, out r, out g, out b);
-                    hash = Mix(hash, (byte)(r / 32));
-                    hash = Mix(hash, (byte)(g / 32));
-                    hash = Mix(hash, (byte)(b / 32));
-                }
-            // The value line changes on a reroll even when a coarse item hash would not.
-            for (int y = panel.Y + Px(112); y < panel.Y + Px(130); y += Math.Max(1, Px(2)))
-                for (int x = panel.X + Px(40); x < panel.X + Px(360); x += Math.Max(1, Px(3)))
-                {
-                    int r, g, b;
-                    frame.Get(x, y, out r, out g, out b);
-                    hash = Mix(hash, (byte)(r / 16));
-                    hash = Mix(hash, (byte)(g / 16));
-                    hash = Mix(hash, (byte)(b / 16));
-                }
-            return hash.ToString("x16");
-        }
-
-        static ulong Mix(ulong hash, byte value)
-        {
-            unchecked { return (hash ^ value) * 1099511628211UL; }
+            StringBuilder text = new StringBuilder();
+            text.Append(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (items == null) return text.ToString();
+            foreach (SeenItem item in items)
+            {
+                string key = item == null ? "" : item.Key;
+                if (string.IsNullOrEmpty(key)) key = "q";
+                text.Append('|');
+                text.Append(key);
+                text.Append('x');
+                text.Append((item == null ? 0 : item.Quantity).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            return text.ToString();
         }
 
         public static RewardShot Read(Frame frame, Rectangle panel, List<Glyph> stack, List<Glyph> valueDigits)
@@ -163,9 +154,7 @@ namespace Chest
             RewardShot shot = new RewardShot();
             shot.Items.AddRange(ReadItems(frame, panel, stack));
             shot.Value = ReadValue(frame, panel, valueDigits);
-            shot.Fingerprint = shot.Value.ToString() + ":" + Fingerprint(frame, panel);
-            foreach (SeenItem item in shot.Items)
-                shot.Fingerprint += ":" + item.Quantity + ":" + item.X + ":" + item.Y;
+            shot.Fingerprint = Semantic(shot.Value, shot.Items);
             return shot;
         }
 
@@ -274,12 +263,13 @@ namespace Chest
             stack.Push(new Point(x, y));
         }
 
-        static int ReadStack(Frame frame, SeenItem item, List<Glyph> glyphs)
+        internal static int ReadStack(Frame frame, SeenItem item, List<Glyph> glyphs)
         {
-            int top = Math.Max(0, item.Y - Px(3));
-            int bottom = Math.Min(frame.Height - 1, item.Y + Px(12));
-            int left = Math.Max(0, item.X - Px(1));
-            int right = Math.Min(frame.Width - 1, item.X + Px(16));
+            // Three digits plus the black drop shadow. Stay in the top of the icon.
+            int top = Math.Max(0, item.Y - Px(2));
+            int bottom = Math.Min(frame.Height - 1, item.Y + Px(10));
+            int left = Math.Max(0, item.X - Px(2));
+            int right = Math.Min(frame.Width - 1, item.X + Px(26));
             int minx = int.MaxValue, maxx = -1, miny = int.MaxValue, maxy = -1, count = 0;
             for (int y = top; y <= bottom; y++)
                 for (int x = left; x <= right; x++)
@@ -311,14 +301,12 @@ namespace Chest
                 Trim(ref bits, ref gw, ref gh);
                 if (gw > 0 && gh > 0)
                 {
-                    if (gw * 2 < gh) text += "1";
-                    else
-                    {
-                        char ch;
-                        double score;
-                        Best(glyphs, bits, gw, gh, out ch, out score);
-                        text += score >= 0.80 ? ch.ToString() : "?";
-                    }
+                    char ch;
+                    double score;
+                    Best(glyphs, bits, gw, gh, out ch, out score);
+                    // A thin stroke is the digit 1 even when its template is a poor fit.
+                    if (score < 0.80 && gw * 2 < gh) { ch = '1'; score = 0.80; }
+                    text += score >= 0.80 ? ch.ToString() : "?";
                 }
                 i = j;
             }
@@ -473,7 +461,9 @@ namespace Chest
         {
             int r, g, b;
             frame.Get(x, y, out r, out g, out b);
-            return r > 210 && g > 175 && b < 70 && (r - b) > 140;
+            // Yellow stack ink, including the paler yellow that sits on a white icon.
+            // White and grey stay out: they are not more yellow than they are blue.
+            return r >= 200 && g >= 155 && b <= 110 && (r - b) >= 120 && g > b + 40;
         }
         static bool ValueInk(Frame frame, int x, int y)
         {
@@ -578,66 +568,120 @@ namespace Chest
     // closed: the window has been gone long enough that the next one is new.
     internal sealed class RewardSession
     {
-        public int MissesBeforeClose = 3;
-        public int StableReads = 2;
+        public int MissesBeforeClose = 8;
+        public int CloseAfterMilliseconds = 450;
+        public int RerollMemoryMilliseconds = 3000;
+        public int InPlaceMilliseconds = 200;
+        public int StableReads = 3;
         public bool Open;
+        public System.Func<int> Clock;
         int misses;
-        int charges = -1;
+        int missAt;
+        int heldCharges = -1;
+        int closedAt;
+        bool haveClosedAt;
+        int pendingAt;
+        bool ready;
         string logged = "";
         string pending = "";
         int pendingSeen;
+
+        int Now()
+        {
+            if (Clock != null) return Clock();
+            return Environment.TickCount;
+        }
+
+        int Elapsed(int start)
+        {
+            int elapsed = unchecked(Now() - start);
+            if (elapsed < 0) return RerollMemoryMilliseconds;
+            return elapsed;
+        }
+
+        void ClearPending()
+        {
+            pending = "";
+            pendingSeen = 0;
+            ready = false;
+        }
+
+        void Remember(int charges, string mark)
+        {
+            if (charges >= 0) heldCharges = charges;
+            logged = mark ?? "";
+            ClearPending();
+        }
+
+        bool Dropped(int charges)
+        {
+            return heldCharges >= 0 && charges == heldCharges - 1;
+        }
 
         public string See(bool visible, int charges, string mark)
         {
             if (!visible)
             {
-                pending = "";
-                pendingSeen = 0;
+                ClearPending();
                 if (!Open) return "none";
+                if (misses == 0) missAt = Now();
                 misses++;
-                if (misses >= MissesBeforeClose)
+                int elapsed = Elapsed(missAt);
+                // A hover or a bad grab blinks for a frame or two. That is not a close.
+                if (misses >= MissesBeforeClose || elapsed >= CloseAfterMilliseconds)
                 {
                     Open = false;
                     misses = 0;
-                    this.charges = -1;
+                    closedAt = Now();
+                    haveClosedAt = true;
                     logged = "";
                     return "closed";
                 }
                 return "none";
             }
             misses = 0;
+            // n falling by one is a reroll, even if the items moved first or the window blinked.
+            if (Dropped(charges))
+            {
+                int since = haveClosedAt ? Elapsed(closedAt) : 0;
+                if (Open || since <= RerollMemoryMilliseconds)
+                {
+                    Open = true;
+                    Remember(charges, mark);
+                    return "replaced";
+                }
+            }
             if (!Open)
             {
                 Open = true;
-                this.charges = charges;
-                logged = mark ?? "";
-                pending = "";
-                pendingSeen = 0;
+                Remember(charges, mark);
                 return "opened";
             }
-            if (this.charges >= 0 && charges == this.charges - 1)
-            {
-                this.charges = charges;
-                logged = mark ?? "";
-                pending = "";
-                pendingSeen = 0;
-                return "replaced";
-            }
-            if (charges >= 0) this.charges = charges;
+            if (charges >= 0) heldCharges = charges;
             if (string.IsNullOrEmpty(mark) || mark == logged)
             {
-                pending = "";
-                pendingSeen = 0;
+                ClearPending();
                 return "none";
             }
-            // A half-drawn frame changes again. Only a repeated read is a new casket.
-            if (mark == pending) pendingSeen++;
-            else { pending = mark; pendingSeen = 1; }
-            int need = StableReads < 2 ? 2 : StableReads;
-            if (pendingSeen < need) return "none";
-            logged = mark;
-            pending = "";
-            pendingSeen = 0;
+            // Items changed while n is still the same. Wait for a settled read, then one
+            // more tick, so a reroll that lands on the next frame replaces instead.
+            if (mark != pending)
+            {
+                pending = mark;
+                pendingSeen = 1;
+                pendingAt = Now();
+                ready = false;
+                return "none";
+            }
+            pendingSeen++;
+            int need = StableReads < 3 ? 3 : StableReads;
+            if (pendingSeen < need || Elapsed(pendingAt) < InPlaceMilliseconds) return "none";
+            if (!ready)
+            {
+                ready = true;
+                return "none";
+            }
+            Remember(charges, mark);
             return "opened";
         }
 
@@ -645,7 +689,12 @@ namespace Chest
         {
             Open = false;
             misses = 0;
-            charges = -1;
+            missAt = 0;
+            heldCharges = -1;
+            closedAt = 0;
+            haveClosedAt = false;
+            pendingAt = 0;
+            ready = false;
             logged = "";
             pending = "";
             pendingSeen = 0;
