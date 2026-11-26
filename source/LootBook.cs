@@ -28,6 +28,7 @@ namespace Chest
         public long Value;
         public LootCommit Last;
         public readonly List<LootLine> Lines = new List<LootLine>();
+        public readonly List<long> Opens = new List<long>();
         readonly string root;
 
         public LootBook(string root) { this.root = root; }
@@ -40,9 +41,43 @@ namespace Chest
             Lines.Clear();
             Caskets = 0;
             Value = 0;
-            if (!File.Exists(TotalsPath)) return;
-            try { Parse(File.ReadAllText(TotalsPath, Encoding.UTF8)); }
+            Opens.Clear();
+            if (File.Exists(TotalsPath))
+            {
+                try { Parse(File.ReadAllText(TotalsPath, Encoding.UTF8)); }
+                catch (Exception ex) { CrashLog.Write(ex); }
+            }
+            LoadOpens();
+        }
+
+        string HistoryPath { get { return Path.Combine(root, "history.txt"); } }
+
+        void LoadOpens()
+        {
+            Opens.Clear();
+            if (!File.Exists(HistoryPath)) return;
+            try
+            {
+                foreach (string line in File.ReadAllLines(HistoryPath))
+                {
+                    long value;
+                    if (long.TryParse(line.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+                        Opens.Add(value);
+                }
+            }
             catch (Exception ex) { CrashLog.Write(ex); }
+        }
+
+        void SaveOpens()
+        {
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < Opens.Count; i++)
+            {
+                if (i > 0) text.Append("\r\n");
+                text.Append(Opens[i].ToString(CultureInfo.InvariantCulture));
+            }
+            text.Append("\r\n");
+            File.WriteAllText(HistoryPath, text.ToString(), Encoding.UTF8);
         }
 
         public void Commit(IList<LootLine> items, long value)
@@ -52,6 +87,7 @@ namespace Chest
             Caskets++;
             Value += value;
             Last = Snapshot(items, value);
+            Opens.Add(value);
             Save();
         }
 
@@ -69,6 +105,8 @@ namespace Chest
             Add(items);
             Value += value;
             Last = Snapshot(items, value);
+            if (Opens.Count > 0) Opens[Opens.Count - 1] = value;
+            else Opens.Add(value);
             Save();
         }
 
@@ -80,6 +118,7 @@ namespace Chest
             Value -= Last.Value;
             if (Value < 0) Value = 0;
             Last = null;
+            if (Opens.Count > 0) Opens.RemoveAt(Opens.Count - 1);
             Save();
             return true;
         }
@@ -87,6 +126,7 @@ namespace Chest
         public void Reset()
         {
             Lines.Clear();
+            Opens.Clear();
             Caskets = 0;
             Value = 0;
             Last = null;
@@ -156,6 +196,7 @@ namespace Chest
                 if (Lines.Count > 0) json.Append("\r\n  ");
                 json.Append("]\r\n}\r\n");
                 File.WriteAllText(TotalsPath, json.ToString(), Encoding.UTF8);
+                SaveOpens();
             }
             catch (Exception ex) { CrashLog.Write(ex); }
         }

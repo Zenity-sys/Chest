@@ -91,11 +91,29 @@ namespace Chest
             if (cache.TryGetValue(key, out font)) return font;
             EnsureFonts();
             FontFamily family = displayFace ? display : (semibold ? semiboldFamily : uiFamily);
-            font = family != null
-                ? new Font(family, size, FontStyle.Regular, GraphicsUnit.Point)
-                : new Font(displayFace ? "Georgia" : "Segoe UI", size, semibold || displayFace ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Point);
+            font = MakeFont(family, size, displayFace, semibold);
             cache[key] = font;
             return font;
+        }
+
+        static Font MakeFont(FontFamily family, float size, bool displayFace, bool semibold)
+        {
+            if (family != null)
+            {
+                try { return new Font(family, size, FontStyle.Regular, GraphicsUnit.Point); }
+                catch (Exception) { }
+            }
+            string[] names = displayFace
+                ? new string[] { "Cinzel Kavros", "Cinzel", "Georgia" }
+                : semibold
+                    ? new string[] { "Outfit Kavros Semibold", "Outfit Kavros", "Outfit", "Segoe UI" }
+                    : new string[] { "Outfit Kavros", "Outfit", "Segoe UI" };
+            foreach (string name in names)
+            {
+                try { return new Font(name, size, FontStyle.Regular, GraphicsUnit.Point); }
+                catch (Exception) { }
+            }
+            return new Font(FontFamily.GenericSansSerif, size, FontStyle.Regular, GraphicsUnit.Point);
         }
 
         public static void ApplyWindowChrome(IntPtr handle)
