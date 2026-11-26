@@ -15,7 +15,7 @@ It is a Windows .NET Framework 4.8 program. Download **Setup.exe** from [Release
 
 The panel sits on the game window you picked. It stays above that window, and it gets out of the way when another program is in front. Drag the title bar to move it. **−** collapses it to the title bar. **Settings** picks the client, switches Grid and List, opens the splash screen, and checks for updates.
 
-Items Chest does not recognise yet show as **Unknown**. The cropped icon is saved in `%LocalAppData%\ChestData\unknown`. Send those pictures back and they can be named in a later update.
+Items Chest does not recognise yet show as **Unknown** straight away. The cropped icon is saved in `%LocalAppData%\ChestData\unknown`. Chest then looks the picture up in the background. A confident match updates the name and the icon, and is kept in `%LocalAppData%\ChestData\wiki-cache` for next time. If there is no confident match, it stays Unknown.
 
 There are no popup windows. The status line on the panel is the only message.
 
@@ -27,15 +27,15 @@ Chest only looks at the screen. It does not read game memory and it does not cli
 
 ## This build
 
-v0.5.0 is tuned on a modern interface, about a 2560×1369 client, at 96 DPI. The reward panel in those shots is 396×239 and sits just left of centre. The reader checks the gold **TRAIL COMPLETE!** title, not just the red tab, then reads the item strip, the yellow stack numbers, and the reward value line. A noted reward is stored as the plain item.
+v0.6.0 is tuned on a modern interface, about a 2560×1369 client, at 96 DPI. The reward panel in those shots is 396×239 and sits just left of centre. The reader checks the gold **TRAIL COMPLETE!** title, not just the red tab, then reads the item strip, the yellow stack numbers, and the reward value line. A noted reward is stored as the plain item.
 
 Stack digits confirmed from those shots are 1, 2, 3, 4 and 7. A stack that uses another digit is counted as 1 until a shot of that digit is added. Reward values use digits 0–9.
 
-Named rewards use the clean item sprites. A screen crop is shown only when no sprite matches, and that crop drops the slot behind it and the yellow stack digit in the corner. Kavros still has its own items, so anything new lands in Unknown until a crop is named in `assets/icons` (`file|Name|group|role` in `catalog.txt`).
+Named rewards use the clean item sprites. A screen crop is shown only when no sprite matches, and that crop drops the slot behind it and the yellow stack digit in the corner. The bundled set includes fallen stars, prismatic stars, XP lamps, prismatic lamps, crossbows, salvage, and common seeds and supplies. Anything still unknown is checked against a wider wiki index without slowing the live read. Kavros items that are not in either list stay Unknown until a sprite is added to `assets/icons` (`file|Name|group|role` in `catalog.txt`).
 
 ## Releases
 
-Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag to publish is `v0.5.0`. The window shows v0.5.0. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
+Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag to publish is `v0.6.0`. The window shows v0.6.0. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
 
 - `Chest-win-Setup.exe`
 - `Chest-win-Portable.zip`

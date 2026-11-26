@@ -33,6 +33,18 @@ namespace Chest
     {
         public const int PanelWidth = 396;
         public const int PanelHeight = 239;
+        static RewardProfile profile = RewardProfile.Native;
+
+        public static RewardProfile Profile { get { return profile; } }
+
+        public static void Use(int clientHeight, int dpi)
+        {
+            RewardProfile next = RewardProfile.For(clientHeight, dpi);
+            if (next.Bucket == profile.Bucket && next.Percent == profile.Percent) return;
+            profile = next;
+        }
+
+        static int Px(int native) { return profile.Px(native); }
 
         public static List<Glyph> LoadGlyphs(string path)
         {
@@ -82,12 +94,12 @@ namespace Chest
                         int x0 = x;
                         while (x < w && DarkRedRaw(px, row + x * 4)) x++;
                         int length = x - x0;
-                        if (length >= 110 && length <= 190 && GoldCount(frame, y, x0) >= 80)
+                        if (length >= Px(110) && length <= Px(190) && GoldCount(frame, y, x0) >= Px(80))
                         {
-                            int left = x0 - 2, top = y - 4;
-                            if (left >= 0 && top >= 0 && left + PanelWidth <= w && top + PanelHeight <= h)
+                            int left = x0 - Px(2), top = y - Px(4);
+                            if (left >= 0 && top >= 0 && left + Px(PanelWidth) <= w && top + Px(PanelHeight) <= h)
                             {
-                                Rectangle panel = new Rectangle(left, top, PanelWidth, PanelHeight);
+                                Rectangle panel = new Rectangle(left, top, Px(PanelWidth), Px(PanelHeight));
                                 if (titleTemplate == null || TitleMatches(frame, panel)) return panel;
                             }
                         }
@@ -107,8 +119,8 @@ namespace Chest
         static int GoldCount(Frame frame, int y, int x0)
         {
             int gold = 0;
-            int bottom = Math.Min(frame.Height, y + 18);
-            int right = Math.Min(frame.Width, x0 + 160);
+            int bottom = Math.Min(frame.Height, y + Px(18));
+            int right = Math.Min(frame.Width, x0 + Px(160));
             for (int yy = y; yy < bottom; yy++)
                 for (int xx = x0; xx < right; xx++)
                     if (Gold(frame, xx, yy)) gold++;
@@ -118,7 +130,7 @@ namespace Chest
         public static string Fingerprint(Frame frame, Rectangle panel)
         {
             ulong hash = 1469598103934665603UL;
-            int top = panel.Y + 46, bottom = panel.Y + 90, left = panel.X + 16, right = panel.X + 378;
+            int top = panel.Y + Px(46), bottom = panel.Y + Px(90), left = panel.X + Px(16), right = panel.X + Px(378);
             for (int y = top; y < bottom; y += 3)
                 for (int x = left; x < right; x += 3)
                 {
@@ -129,8 +141,8 @@ namespace Chest
                     hash = Mix(hash, (byte)(b / 32));
                 }
             // The value line changes on a reroll even when a coarse item hash would not.
-            for (int y = panel.Y + 112; y < panel.Y + 130; y += 2)
-                for (int x = panel.X + 40; x < panel.X + 360; x += 3)
+            for (int y = panel.Y + Px(112); y < panel.Y + Px(130); y += Math.Max(1, Px(2)))
+                for (int x = panel.X + Px(40); x < panel.X + Px(360); x += Math.Max(1, Px(3)))
                 {
                     int r, g, b;
                     frame.Get(x, y, out r, out g, out b);
@@ -159,7 +171,7 @@ namespace Chest
 
         static List<SeenItem> ReadItems(Frame frame, Rectangle panel, List<Glyph> stack)
         {
-            int top = panel.Y + 46, bottom = panel.Y + 90, left = panel.X + 16, right = panel.X + 378;
+            int top = panel.Y + Px(46), bottom = panel.Y + Px(90), left = panel.X + Px(16), right = panel.X + Px(378);
             int width = right - left, height = bottom - top;
             List<int> rs = new List<int>(), gs = new List<int>(), bs = new List<int>();
             for (int y = top; y < bottom; y += 2)
@@ -238,7 +250,7 @@ namespace Chest
             foreach (int[] box in comps)
             {
                 int bw = box[2] - box[0] + 1, bh = box[3] - box[1] + 1;
-                if (bw < 8 || bh < 8 || bw > 50 || bh > 40) continue;
+                if (bw < Px(8) || bh < Px(8) || bw > Px(50) || bh > Px(40)) continue;
                 if (box[4] < bw * bh * 0.12) continue;
                 SeenItem item = new SeenItem();
                 item.X = left + box[0];
@@ -264,10 +276,10 @@ namespace Chest
 
         static int ReadStack(Frame frame, SeenItem item, List<Glyph> glyphs)
         {
-            int top = Math.Max(0, item.Y - 3);
-            int bottom = Math.Min(frame.Height - 1, item.Y + 12);
-            int left = Math.Max(0, item.X - 1);
-            int right = Math.Min(frame.Width - 1, item.X + 16);
+            int top = Math.Max(0, item.Y - Px(3));
+            int bottom = Math.Min(frame.Height - 1, item.Y + Px(12));
+            int left = Math.Max(0, item.X - Px(1));
+            int right = Math.Min(frame.Width - 1, item.X + Px(16));
             int minx = int.MaxValue, maxx = -1, miny = int.MaxValue, maxy = -1, count = 0;
             for (int y = top; y <= bottom; y++)
                 for (int x = left; x <= right; x++)
@@ -319,9 +331,9 @@ namespace Chest
         {
             if (glyphs == null || glyphs.Count == 0) return 0;
             List<int[]> hits = new List<int[]>();
-            int y = panel.Y + 116;
-            int x = panel.X + 40;
-            int limit = panel.X + 360;
+            int y = panel.Y + Px(116);
+            int x = panel.X + Px(40);
+            int limit = panel.X + Px(360);
             while (x < limit)
             {
                 Glyph best = null;
@@ -329,8 +341,8 @@ namespace Chest
                 foreach (Glyph glyph in glyphs)
                 {
                     double score = Score(frame, x, y, glyph, delegate(int px, int py) { return ValueInk(frame, px, py); });
-                    int wide = glyph.Width;
-                    if (score >= 0.86 && (best == null || score > bestScore + 0.015 || (score >= bestScore - 0.015 && wide > best.Width)))
+                    int wide = Px(glyph.Width);
+                    if (score >= 0.86 && (best == null || score > bestScore + 0.015 || (score >= bestScore - 0.015 && wide > (best == null ? 0 : Px(best.Width)))))
                     {
                         best = glyph;
                         bestScore = score;
@@ -338,8 +350,8 @@ namespace Chest
                 }
                 if (best != null)
                 {
-                    hits.Add(new int[] { x, best.Value, best.Width });
-                    x += best.Width;
+                    hits.Add(new int[] { x, best.Value, Px(best.Width) });
+                    x += Px(best.Width);
                 }
                 else x++;
             }
@@ -347,7 +359,7 @@ namespace Chest
             List<int[]> current = new List<int[]>();
             foreach (int[] hit in hits)
             {
-                if (current.Count > 0 && hit[0] > current[current.Count - 1][0] + current[current.Count - 1][2] + 6)
+                if (current.Count > 0 && hit[0] > current[current.Count - 1][0] + current[current.Count - 1][2] + Px(6))
                 {
                     runs.Add(current);
                     current = new List<int[]>();
@@ -378,11 +390,11 @@ namespace Chest
 
         static double Score(Frame frame, int x, int y, Glyph glyph, Func<int, int, bool> ink)
         {
-            if (x < 0 || y < 0 || x + glyph.Width > frame.Width || y + glyph.Height > frame.Height) return -1;
+            if (x < 0 || y < 0 || x + Px(glyph.Width) > frame.Width || y + Px(glyph.Height) > frame.Height) return -1;
             int hit = 0, total = glyph.Width * glyph.Height;
             for (int yy = 0; yy < glyph.Height; yy++)
                 for (int xx = 0; xx < glyph.Width; xx++)
-                    if (ink(x + xx, y + yy) == glyph.On[yy * glyph.Width + xx]) hit++;
+                    if (ink(x + Px(xx), y + Px(yy)) == glyph.On[yy * glyph.Width + xx]) hit++;
             return total == 0 ? 0 : hit / (double)total;
         }
 
@@ -480,14 +492,14 @@ namespace Chest
         // The red tab alone is not enough. The gold title has to read TRAIL COMPLETE.
         public static bool TitleMatches(Frame frame, Rectangle panel)
         {
-            if (titleTemplate == null || frame == null || panel.Width < 170) return false;
+            if (titleTemplate == null || frame == null || panel.Width < Px(170)) return false;
             long sad = 0;
             int n = 0;
             for (int y = 0; y < titleTemplate.Height; y++)
                 for (int x = 0; x < titleTemplate.Width; x++)
                 {
                     int r1, g1, b1, r2, g2, b2;
-                    frame.Get(panel.X + 10 + x, panel.Y + 4 + y, out r1, out g1, out b1);
+                    frame.Get(panel.X + Px(10 + x), panel.Y + Px(4 + y), out r1, out g1, out b1);
                     titleTemplate.Get(x, y, out r2, out g2, out b2);
                     sad += Math.Abs(r1 - r2) + Math.Abs(g1 - g2) + Math.Abs(b1 - b2);
                     n++;
@@ -499,18 +511,18 @@ namespace Chest
         // n caps at 5. A reroll is only n dropping by exactly one.
         public static int RerollCount(Frame frame, Rectangle panel)
         {
-            if (frame == null || panel.Width < 200) return -1;
+            if (frame == null || panel.Width < Px(200)) return -1;
             int paren = -1;
-            for (int x = panel.X + 255; x < panel.X + 278; x++)
+            for (int x = panel.X + Px(255); x < panel.X + Px(278); x++)
             {
                 int ink = 0;
-                for (int y = panel.Y + 200; y < panel.Y + 216; y++)
+                for (int y = panel.Y + Px(200); y < panel.Y + Px(216); y++)
                     if (ButtonInk(frame, x, y)) ink++;
-                if (ink < 6) continue;
+                if (ink < Px(6)) continue;
                 int left = 0;
-                for (int y = panel.Y + 200; y < panel.Y + 216; y++)
-                    if (ButtonInk(frame, x - 1, y)) left++;
-                if (left < 3) paren = x;
+                for (int y = panel.Y + Px(200); y < panel.Y + Px(216); y++)
+                    if (ButtonInk(frame, x - Px(1), y)) left++;
+                if (left < Px(3)) paren = x;
             }
             if (paren < 0) return -1;
             int best = -1;
@@ -525,7 +537,7 @@ namespace Chest
                     string row = rows[y];
                     for (int x = 0; x < row.Length; x++)
                     {
-                        bool on = ButtonInk(frame, paren - 8 + x, panel.Y + 203 + y);
+                        bool on = ButtonInk(frame, paren - Px(8) + Px(x), panel.Y + Px(203 + y));
                         bool want = row[x] == '#';
                         if (on == want) score++;
                         compared++;
@@ -560,20 +572,27 @@ namespace Chest
         };
     }
 
-    // opened: a reward window that is not a one-step reroll. Count it.
+    // opened: a new casket. The window just appeared, or it stayed open and the
+    // items or value settled on something new without a one-step reroll.
     // replaced: REROLL REWARD (n) fell by exactly one on this same window.
     // closed: the window has been gone long enough that the next one is new.
     internal sealed class RewardSession
     {
         public int MissesBeforeClose = 3;
+        public int StableReads = 2;
         public bool Open;
         int misses;
         int charges = -1;
+        string logged = "";
+        string pending = "";
+        int pendingSeen;
 
         public string See(bool visible, int charges, string mark)
         {
             if (!visible)
             {
+                pending = "";
+                pendingSeen = 0;
                 if (!Open) return "none";
                 misses++;
                 if (misses >= MissesBeforeClose)
@@ -581,6 +600,7 @@ namespace Chest
                     Open = false;
                     misses = 0;
                     this.charges = -1;
+                    logged = "";
                     return "closed";
                 }
                 return "none";
@@ -590,17 +610,35 @@ namespace Chest
             {
                 Open = true;
                 this.charges = charges;
+                logged = mark ?? "";
+                pending = "";
+                pendingSeen = 0;
                 return "opened";
             }
             if (this.charges >= 0 && charges == this.charges - 1)
             {
                 this.charges = charges;
+                logged = mark ?? "";
+                pending = "";
+                pendingSeen = 0;
                 return "replaced";
             }
-            // The picture jitters while the window stays up. That is not a new casket.
-            // A refill (n goes up) is not one either. A new casket needs the window to close first.
             if (charges >= 0) this.charges = charges;
-            return "none";
+            if (string.IsNullOrEmpty(mark) || mark == logged)
+            {
+                pending = "";
+                pendingSeen = 0;
+                return "none";
+            }
+            // A half-drawn frame changes again. Only a repeated read is a new casket.
+            if (mark == pending) pendingSeen++;
+            else { pending = mark; pendingSeen = 1; }
+            int need = StableReads < 2 ? 2 : StableReads;
+            if (pendingSeen < need) return "none";
+            logged = mark;
+            pending = "";
+            pendingSeen = 0;
+            return "opened";
         }
 
         public void Reset()
@@ -608,6 +646,9 @@ namespace Chest
             Open = false;
             misses = 0;
             charges = -1;
+            logged = "";
+            pending = "";
+            pendingSeen = 0;
         }
     }
 }

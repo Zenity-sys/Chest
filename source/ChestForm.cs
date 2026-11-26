@@ -28,11 +28,14 @@ namespace Chest
         public long RewardValue;
         public int Caskets;
         public bool UndoArmed;
+        public bool ResetArmed;
         public bool Logged;
         public bool HistoryOpen;
         public string Mode = "grid";
         public string Detail;
+        public float UiScale = 1F;
         public Action UndoClicked;
+        public Action ResetClicked;
         public Action UnknownClicked;
         public Action DebugClicked;
         public Action<string> ModeChanged;
@@ -101,6 +104,7 @@ namespace Chest
             if (hit < 0 || hit != was) return;
             if (hit == 0) { HistoryOpen = !HistoryOpen; scroll = 0; }
             if (hit == 1 && UndoClicked != null) UndoClicked();
+            if (hit == 6 && ResetClicked != null) ResetClicked();
             if (hit == 2 && UnknownClicked != null) UnknownClicked();
             if (hit == 3 && DebugClicked != null) DebugClicked();
             if (hit == 4 || hit == 5)
@@ -112,7 +116,17 @@ namespace Chest
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged);
+            if (UiScale <= 1.01F)
+            {
+                ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged, ResetArmed);
+                return;
+            }
+            e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+            e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+            e.Graphics.ScaleTransform(UiScale, UiScale);
+            int w = Math.Max(1, (int)(ClientSize.Width / UiScale));
+            int h = Math.Max(1, (int)(ClientSize.Height / UiScale));
+            ChestFace.Draw(e.Graphics, new Rectangle(0, 0, w, h), Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged, ResetArmed);
         }
     }
 
@@ -156,6 +170,12 @@ namespace Chest
         bool offsetReady;
         bool topKnown;
         bool topMost;
+        float uiScale = 1F;
+        bool uiApplied;
+        readonly CaptureFollow region = new CaptureFollow();
+        Rectangle trackedPanel;
+        Rectangle overlayScreen;
+        PhysicalPlace placed;
         DateTime resetArmedAt;
         DateTime undoArmedAt;
         Point offset;
@@ -202,12 +222,15 @@ namespace Chest
             BuildChrome();
             chest.Mode = viewMode;
             chest.UndoClicked = delegate { OnUndo(); };
+            chest.ResetClicked = delegate { OnReset(); };
             chest.UnknownClicked = delegate { OpenUnknown(); };
             chest.DebugClicked = delegate { SaveDebug(); };
             chest.ModeChanged = delegate(string mode) { viewMode = mode; chest.Mode = mode; SaveView(); };
             stackGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "stack.txt")));
             valueGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "value.txt")));
             icons = IconLibrary.Load(Path.Combine(assetPath, "icons"), Path.Combine(assetPath, "icons", "catalog.txt"));
+            WikiLookup.UseAssets(assetPath);
+            WikiLookup.CacheDirectory = Path.Combine(dataRoot, "wiki-cache");
             RewardReader.LoadTitle(Path.Combine(assetPath, "reward", "trail-title.png"));
             RefreshGrid();
             follow.Interval = 50;
@@ -230,6 +253,8 @@ namespace Chest
                 watcher.Name = "ChestWatch";
                 watcher.Start();
                 follow.Start();
+                try { ApplyUiDpi(ReadUiDpi()); } catch (Exception) { }
+                CompanionStatus.Write("running");
                 ShowSplash();
                 AppUpdates.Check(this, false);
             };
@@ -238,7 +263,50 @@ namespace Chest
                 running = false;
                 follow.Stop();
                 foreach (Bitmap bitmap in pictures.Values) bitmap.Dispose();
+                try { CompanionStatus.Write("stopped"); } catch (Exception) { }
             };
+        }
+
+        int ReadUiDpi()
+        {
+            try
+            {
+                System.Reflection.PropertyInfo prop = typeof(Control).GetProperty("DeviceDpi");
+                if (prop != null)
+                {
+                    object value = prop.GetValue(this, null);
+                    if (value is int) return (int)value;
+                }
+            }
+            catch (Exception) { }
+            return 96;
+        }
+
+        int U(int value)
+        {
+            if (uiScale <= 1.01F) return value;
+            return (int)Math.Round(value * uiScale);
+        }
+
+        void ApplyUiDpi(int dpi)
+        {
+            int percent = ClientScale.ScalingPercent(dpi);
+            float scale = percent / 100F;
+            if (uiApplied && Math.Abs(scale - uiScale) < 0.01F) return;
+            uiApplied = true;
+            uiScale = scale;
+            chest.UiScale = scale;
+            if (settingsForm != null) settingsForm.UiScale = scale;
+            if (splashForm != null) splashForm.UiScale = scale;
+            float face = scale <= 1.01F ? 8F : 8F * scale;
+            settingsButton.Font = KavrosTheme.Ui(face, false);
+            collapse.Font = KavrosTheme.Ui(face, false);
+            closeButton.Font = KavrosTheme.Ui(face, false);
+            heading.Font = KavrosTheme.Display(scale <= 1.01F ? 11F : 11F * scale);
+            clientLabel.Font = KavrosTheme.Ui(scale <= 1.01F ? 9F : 9F * scale, false);
+            ClientSize = new Size(U(layout.WindowWidth), collapsed ? U(32) : U(layout.WindowHeight));
+            LayoutChrome();
+            placed.Known = false;
         }
 
         protected override void WndProc(ref Message message)
@@ -374,14 +442,14 @@ namespace Chest
         {
             int w = ClientSize.Width;
             int h = ClientSize.Height;
-            int head = collapsed ? h : 30;
-            goldBar.SetBounds(0, 0, w, 2);
-            titleBar.SetBounds(0, 2, w, Math.Max(0, head - 2));
-            closeButton.SetBounds(w - 30, 3, 24, 22);
-            collapse.SetBounds(w - 56, 3, 24, 22);
-            settingsButton.SetBounds(w - 142, 3, 80, 22);
-            restart.SetBounds(w - 210, 3, 64, 22);
-            clientLabel.SetBounds(78, 5, Math.Max(40, w - 300), 20);
+            int head = collapsed ? h : U(30);
+            goldBar.SetBounds(0, 0, w, Math.Max(2, U(2)));
+            titleBar.SetBounds(0, goldBar.Height, w, Math.Max(0, head - goldBar.Height));
+            closeButton.SetBounds(w - U(30), U(3), U(24), U(22));
+            collapse.SetBounds(w - U(56), U(3), U(24), U(22));
+            settingsButton.SetBounds(w - U(142), U(3), U(80), U(22));
+            restart.SetBounds(w - U(210), U(3), U(64), U(22));
+            clientLabel.SetBounds(U(78), U(5), Math.Max(U(40), w - U(300)), U(20));
             bool body = !collapsed;
             chest.Visible = body;
             goldBar.Visible = true;
@@ -393,7 +461,7 @@ namespace Chest
         {
             collapsed = value;
             collapse.Text = collapsed ? "+" : "−";
-            ClientSize = new Size(layout.WindowWidth, collapsed ? 32 : layout.WindowHeight);
+            ClientSize = new Size(U(layout.WindowWidth), collapsed ? U(32) : U(layout.WindowHeight));
             LayoutChrome();
             SavePanel();
         }
@@ -443,10 +511,13 @@ namespace Chest
             {
                 resetArmed = true;
                 resetArmedAt = DateTime.UtcNow;
+                chest.ResetArmed = true;
+                chest.Invalidate();
                 Say("Click Reset again to clear the chest.");
                 return;
             }
             resetArmed = false;
+            chest.ResetArmed = false;
             book.Reset();
             RefreshGrid();
             Say("Chest cleared.");
@@ -498,7 +569,14 @@ namespace Chest
             refreshing = true;
             windows.Items.Clear();
             foreach (GameWindow client in clients) windows.Items.Add(client);
-            GameWindow chosen = WindowLocator.Choose(clients, selected, selectedPid, Native.GetForegroundWindow());
+            GameWindow bound = null;
+            if (ClientLaunch.Hwnd > 0)
+                foreach (GameWindow client in clients)
+                    if (client.Handle.ToInt64() == ClientLaunch.Hwnd) bound = client;
+            if (bound == null && ClientLaunch.Pid > 0)
+                foreach (GameWindow client in clients)
+                    if (client.ProcessId == (uint)ClientLaunch.Pid) bound = client;
+            GameWindow chosen = bound ?? WindowLocator.Choose(clients, selected, selectedPid, Native.GetForegroundWindow());
             if (chosen != null)
             {
                 windows.SelectedItem = chosen;
@@ -545,6 +623,8 @@ namespace Chest
             {
                 watchEpoch = clientEpoch;
                 session.Reset();
+                region.Reset();
+                trackedPanel = Rectangle.Empty;
             }
             IntPtr handle = selected;
             if (handle == IntPtr.Zero || !Native.IsWindow(handle))
@@ -554,10 +634,21 @@ namespace Chest
             }
             if (Native.IsIconic(handle)) return;
             Rectangle bounds = Native.ClientBounds(handle);
-            Rectangle visible = Rectangle.Intersect(bounds, Native.VirtualScreen());
-            if (visible.Width < 200 || visible.Height < 200) return;
+            RewardReader.Use(bounds.Height, Native.Dpi(handle));
+            Rectangle roi = region.Choose(bounds.Size, trackedPanel);
+            Rectangle grab = roi;
+            grab.Offset(bounds.Location);
+            Rectangle visible = Rectangle.Intersect(grab, Native.VirtualScreen());
+            if (visible.Width < 80 || visible.Height < 80) return;
             Frame frame = ScreenCapture.Grab(visible);
             if (frame == null) return;
+            Rectangle mine = overlayScreen;
+            if (mine.Width > 0)
+            {
+                Rectangle cover = mine;
+                cover.Offset(-visible.X, -visible.Y);
+                frame.Cover(cover);
+            }
             if (saveRequested)
             {
                 saveRequested = false;
@@ -569,11 +660,14 @@ namespace Chest
             bool titled = !local.IsEmpty && RewardReader.TitleMatches(frame, local);
             if (!titled)
             {
+                region.Note(false);
                 session.See(false, -1, null);
                 lock (grabLock) { lastGrab = frame; lastPanel = Rectangle.Empty; lastTitle = false; lastAction = "closed"; }
                 DetectionLog.Write("no TRAIL COMPLETE");
                 return;
             }
+            region.Note(true);
+            trackedPanel = new Rectangle(local.X + visible.X - bounds.X, local.Y + visible.Y - bounds.Y, local.Width, local.Height);
             RewardShot shot = RewardReader.Read(frame, local, stackGlyphs, valueGlyphs);
             if (shot.Items.Count == 0)
             {
@@ -633,6 +727,7 @@ namespace Chest
                     if (!File.Exists(file))
                         FramePng.Save(new Frame(cleaned, pw, ph), file);
                     Remember(line.Id, new Frame(cleaned, pw, ph));
+                    QueueLookup(line.Id, cleaned, pw, ph);
                 }
                 RememberLook(line.Id, line.Name, sig);
                 lines.Add(line);
@@ -641,6 +736,47 @@ namespace Chest
             else book.Commit(lines, shot.Value);
             RefreshGrid();
             Say(book.Caskets > 0 ? "Opening " + book.Caskets : "Open a clue casket");
+        }
+
+        void QueueLookup(string id, byte[] cleaned, int width, int height)
+        {
+            WikiLookup.ResolveAsync(cleaned, width, height, delegate(WikiHit found, string sprite)
+            {
+                if (found == null || !found.Confident || string.IsNullOrEmpty(sprite)) return;
+                try { BeginInvoke(new Action(delegate { ApplyFound(id, found, sprite); })); }
+                catch (InvalidOperationException) { }
+            });
+        }
+
+        void ApplyFound(string oldId, WikiHit found, string sprite)
+        {
+            if (IsDisposed || found == null || !found.Confident) return;
+            string newId = IconLibrary.Slug(found.Name);
+            if (string.IsNullOrEmpty(newId)) newId = found.FileName;
+            if (!book.RenameUnknown(oldId, newId, found.Name)) return;
+            Bitmap previous;
+            if (pictures.TryGetValue(oldId, out previous))
+            {
+                pictures.Remove(oldId);
+                previous.Dispose();
+            }
+            if (!pictures.ContainsKey(newId))
+            {
+                IconRef icon = IconLibrary.Resolve(icons, newId, found.Name);
+                if (icon != null) Remember(newId, new Frame(icon.Bgra, icon.Width, icon.Height));
+                else
+                {
+                    Frame frame = FramePng.Decode(sprite);
+                    if (frame != null) Remember(newId, frame);
+                }
+            }
+            for (int i = 0; i < lookIds.Count; i++)
+            {
+                if (lookIds[i] != oldId) continue;
+                lookIds[i] = newId;
+                lookNames[i] = found.Name;
+            }
+            RefreshGrid();
         }
 
         int FindLook(byte[] sig)
@@ -674,6 +810,7 @@ namespace Chest
             chest.RewardValue = book.Value;
             chest.Caskets = book.Caskets;
             chest.UndoArmed = undoArmed;
+            chest.ResetArmed = resetArmed;
             chest.Logged = book.Caskets > 0;
             chest.Opens = book.Opens;
             chest.ShowSlots(slots);
@@ -684,28 +821,20 @@ namespace Chest
         {
             Bitmap cached;
             if (pictures.TryGetValue(line.Id, out cached)) return cached;
-            if (line.Unknown)
+            IconRef icon = IconLibrary.Resolve(icons, line.Id, line.Name);
+            if (icon != null)
+                return Remember(line.Id, new Frame(icon.Bgra, icon.Width, icon.Height));
+            if (line.Unknown && line.Id != null && line.Id.StartsWith("unknown-") && line.Id.Length > "unknown-".Length)
             {
                 string file = Path.Combine(book.UnknownDirectory, line.Id.Substring("unknown-".Length) + ".png");
                 Frame frame = File.Exists(file) ? FramePng.Decode(file) : null;
-                if (frame == null) return null;
-                byte[] cleaned = Noted.CleanForDisplay(frame.Bgra, frame.Width, frame.Height);
-                return Remember(line.Id, new Frame(cleaned, frame.Width, frame.Height));
+                if (frame != null)
+                {
+                    byte[] cleaned = Noted.CleanForDisplay(frame.Bgra, frame.Width, frame.Height);
+                    return Remember(line.Id, new Frame(cleaned, frame.Width, frame.Height));
+                }
             }
-            IconRef fallback = null;
-            foreach (IconRef icon in icons)
-            {
-                string group = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
-                if (group != line.Id && icon.Name != line.Name) continue;
-                if (icon.Show) return Remember(line.Id, new Frame(icon.Bgra, icon.Width, icon.Height));
-                if (fallback == null) fallback = icon;
-            }
-            if (fallback != null)
-            {
-                byte[] cleaned = Noted.CleanForDisplay(fallback.Bgra, fallback.Width, fallback.Height);
-                return Remember(line.Id, new Frame(cleaned, fallback.Width, fallback.Height));
-            }
-            return null;
+            return Remember(line.Id, IconLibrary.Placeholder());
         }
 
         Bitmap Remember(string id, Frame frame)
@@ -806,6 +935,7 @@ namespace Chest
         void Follow(object sender, EventArgs e)
         {
             if (IsDisposed || dragging) return;
+            try { ApplyUiDpi(ReadUiDpi()); } catch (Exception) { }
             bool exists = selected != IntPtr.Zero && Native.IsWindow(selected);
             if (!exists)
             {
@@ -819,7 +949,14 @@ namespace Chest
             bool gameFront = WindowLocator.IsForeground(selected);
             IntPtr front = Native.GetForegroundWindow();
             bool panelFront = front == Handle || ContainsFocus || (IsHandleCreated && Native.GetAncestor(front, Native.GaRoot) == Handle);
-            if (!FloatingPanelLayout.Shown(true, minimised, gameFront, panelFront))
+            string frontTitle = "";
+            if (front != IntPtr.Zero && front != selected && front != Handle)
+            {
+                StringBuilder title = new StringBuilder(256);
+                Native.GetWindowText(front, title, title.Capacity);
+                frontTitle = title.ToString();
+            }
+            if (OverlayVisibility.CoveredByOtherClient(selected, front, frontTitle) || !FloatingPanelLayout.Shown(true, minimised, gameFront, panelFront))
             {
                 if (Visible) Hide();
                 topKnown = false;
@@ -835,7 +972,8 @@ namespace Chest
             }
             Rectangle desktop = Screen.FromRectangle(game).WorkingArea;
             Rectangle place = FloatingPanelLayout.Place(game, Size, offset, desktop);
-            if (Bounds != place) Native.PlaceNoZOrder(Handle, place);
+            if (placed.Changed(place)) Native.PlaceNoZOrder(Handle, place);
+            overlayScreen = place;
             if (!Visible) Show();
             bool want = FloatingPanelLayout.WantTopMost(true, minimised, gameFront, panelFront);
             if (!topKnown || want != topMost)
