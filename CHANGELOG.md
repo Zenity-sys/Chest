@@ -1,3 +1,7 @@
+## 0.6.5
+
+- REROLL REWARD (1) and (2) read as 1 and 2. A new casket clears a reroll count that could not be read, so a later casket is not treated as a reroll.
+
 ## 0.6.4
 
 - Tabbing away and back does not count the same reward again, even if one stack digit flickers. One bad frame while the window uncovers is ignored.
