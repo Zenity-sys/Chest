@@ -12,13 +12,13 @@ namespace Chest
 
         internal static string DisplayVersion { get { return Shown(App.GetName().Version); } }
 
-        // The window credit keeps the patch, so 0.5.0 reads v0.5.0.
+        // The window credit keeps the patch, so 0.6.0 reads v0.6.0.
         internal static string FullVersion
         {
             get
             {
                 Version version = App.GetName().Version;
-                if (version == null) return "v0.5.0";
+                if (version == null) return "v0.6.0";
                 int build = version.Build < 0 ? 0 : version.Build;
                 return "v" + version.Major + "." + version.Minor + "." + build;
             }

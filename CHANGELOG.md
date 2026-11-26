@@ -1,4 +1,4 @@
-## Unreleased
+## 0.6.0
 
 - Fallen stars, prismatic stars, XP lamps, prismatic lamps, crossbows, salvage, seeds, and other common casket drops have clean sprites.
 - An unknown item is shown immediately, then named in the background when a wiki sprite matches. The sprite is cached for later. A weak match stays Unknown.
