@@ -50,7 +50,9 @@ namespace Chest
             for (int i = 0; i < 3; i++)
             {
                 if (i > 0) { fresh.See(false, -1, null); fresh.See(false, -1, null); fresh.See(false, -1, null); }
-                if (fresh.See(true, 5, marks[i]) == "opened") opened++;
+                string seen = fresh.See(true, 5, marks[i]);
+                if (seen == "none") seen = fresh.See(true, 5, marks[i]);
+                if (seen == "opened") opened++;
             }
             Check(opened == 3, "three new caskets count as three");
 
@@ -78,6 +80,7 @@ namespace Chest
             string firstOpen = again.See(true, 5, "alpha");
             again.See(false, -1, null); again.See(false, -1, null); again.See(false, -1, null);
             string secondOpen = again.See(true, 5, "beta");
+            if (secondOpen == "none") secondOpen = again.See(true, 5, "beta");
             Check(firstOpen == "opened" && secondOpen == "opened", "a window that closes and reopens is a second casket");
 
             RewardSession rolled = new RewardSession();
@@ -95,6 +98,7 @@ namespace Chest
             refilledNow = 560;
             refilled.See(false, -1, null);
             string up = refilled.See(true, 4, "new");
+            if (up == "none") up = refilled.See(true, 4, "new");
             Check(low == "opened" && up == "opened" && Count(low, up) == 2, "n going from 3 to 4 is a new casket");
             Rectangle game = new Rectangle(100, 80, 900, 600);
             Rectangle placed = FloatingPanelLayout.Place(game, new Size(200, 120), new Point(800, 40), new Rectangle(0, 0, 2000, 1200));
@@ -415,6 +419,7 @@ namespace Chest
                 int charges = RewardReader.RerollCount(frame, panel);
                 string action = session.See(true, charges, shot.Fingerprint);
                 string wanted = i == 1 ? "none" : (i >= 4 ? "replaced" : "opened");
+                if (action == "none" && wanted == "opened") action = session.See(true, charges, shot.Fingerprint);
                 Check(action == wanted, "pipeline logs master-" + i + " as " + wanted + " (" + action + ")");
                 if (action == "opened")
                     book.Commit(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
@@ -478,6 +483,16 @@ namespace Chest
             List<long> opens = new List<long>();
             for (int i = 0; i < values.Length; i++) { session += values[i]; opens.Add(values[i]); }
             ChestFace.LoadCrest(Path.Combine(root, "assets", "branding", "kavros-crest.png"));
+            Frame water = FramePng.Decode(Path.Combine(root, "assets", "icons", "water-rune.png"));
+            if (water != null)
+            {
+                SlotView rune = new SlotView();
+                rune.Name = "Water rune";
+                rune.Quantity = 150;
+                rune.Image = BitmapOf(water.Bgra, water.Width, water.Height);
+                all.Insert(0, rune);
+            }
+            RenderOverlay(all, "grid", session, 6, "/opt/cursor/artifacts/grid.png", opens, 560);
             RenderOverlay(all, "grid", session, 6, "/opt/cursor/artifacts/overlay-grid.png", opens, 560);
             RenderOverlay(all, "list", session, 6, "/opt/cursor/artifacts/overlay-list.png", opens, 860);
             RenderOverlay(all, "grid", session, 6, Path.Combine(Path.GetTempPath(), "chest-preview", "real-grid.png"), opens, 560);
@@ -826,6 +841,30 @@ namespace Chest
             string tabBack = tab.See(true, -1, "9255|staff-of-airx1|itemx13");
             string tabAgain = tab.See(true, -1, "9255|staff-of-airx1|itemx13");
             Check(tabOpen == "opened" && tabShut == "closed" && tabBack == "none" && tabAgain == "none", "alt-tab of 10 seconds does not count the same casket again");
+            string stable = "4069|pollnivneach-teleportx1|sealed-clue-scroll-masterx1|staff-of-firex1|water-runex150";
+            string flickered = "4069|pollnivneach-teleportx11|sealed-clue-scroll-masterx1|staff-of-firex1|water-runex150";
+            Check(RewardSession.SameReward(stable, flickered), "a flickered stack digit is still the same reward");
+            RewardSession flicker = new RewardSession();
+            int flickNow = 0;
+            flicker.Clock = delegate { return flickNow; };
+            string flickOpen = flicker.See(true, 5, stable);
+            flickNow = 200;
+            flicker.See(false, -1, null);
+            flickNow = 800;
+            string flickShut = flicker.See(false, -1, null);
+            string flickBack = flicker.See(true, 5, flickered);
+            Check(flickOpen == "opened" && flickShut == "closed" && flickBack == "none", "tabbing back with a flickered stack digit does not recount");
+            RewardSession garbled = new RewardSession();
+            int garbledNow = 0;
+            garbled.Clock = delegate { return garbledNow; };
+            garbled.See(true, 5, stable);
+            garbledNow = 200;
+            garbled.See(false, -1, null);
+            garbledNow = 800;
+            garbled.See(false, -1, null);
+            string junk = garbled.See(true, 5, "999|junkx1");
+            string backSame = garbled.See(true, 5, stable);
+            Check(junk == "none" && backSame == "none", "one garbled frame after a tab does not recount");
             tab.Reset();
             Check(tab.See(true, -1, "9255|staff-of-airx1|itemx13") == "opened", "reset lets the next casket log");
 
@@ -958,7 +997,7 @@ namespace Chest
                     {
                         if (!glyph.On[y * glyph.Width + x]) continue;
                         Paint(data, width, height, penX + x + 1, oy + y + 1, 16, 12, 12);
-                        Paint(data, width, height, penX + x, oy + y, 52, 187, 250);
+                        Paint(data, width, height, penX + x, oy + y, 0, 255, 255);
                     }
                 penX += glyph.Width + 1;
             }
