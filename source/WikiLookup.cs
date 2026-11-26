@@ -130,7 +130,7 @@ namespace Chest
                     string temp = cached + ".part";
                     using (WebClient client = new WikiClient())
                     {
-                        client.Headers["User-Agent"] = "Chest/0.6.2 (reward logger)";
+                        client.Headers["User-Agent"] = "Chest/0.6.3 (reward logger)";
                         client.DownloadFile(url, temp);
                     }
                     if (!IsPng(temp))

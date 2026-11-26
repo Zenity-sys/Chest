@@ -27,6 +27,7 @@ namespace Chest
         public int Caskets;
         public long Value;
         public LootCommit Last;
+        LootCommit previous;
         public readonly List<LootLine> Lines = new List<LootLine>();
         public readonly List<long> Opens = new List<long>();
         readonly string root;
@@ -86,6 +87,7 @@ namespace Chest
             Add(items);
             Caskets++;
             Value += value;
+            previous = Clone(Last);
             Last = Snapshot(items, value);
             Opens.Add(value);
             Save();
@@ -118,9 +120,27 @@ namespace Chest
             Value -= Last.Value;
             if (Value < 0) Value = 0;
             Last = null;
+            previous = null;
             if (Opens.Count > 0) Opens.RemoveAt(Opens.Count - 1);
             Save();
             return true;
+        }
+
+        // The new items were logged a moment too soon, before n dropped.
+        // Drop that extra casket, then replace the one before it.
+        public void Coalesce(IList<LootLine> items, long value)
+        {
+            if (Last != null)
+            {
+                Subtract(Last.Items);
+                Value -= Last.Value;
+                if (Value < 0) Value = 0;
+                if (Caskets > 0) Caskets--;
+                if (Opens.Count > 0) Opens.RemoveAt(Opens.Count - 1);
+            }
+            Last = previous;
+            previous = null;
+            ReplaceLast(items, value);
         }
 
         public void Reset()
@@ -130,6 +150,7 @@ namespace Chest
             Caskets = 0;
             Value = 0;
             Last = null;
+            previous = null;
             Save();
         }
 
@@ -198,6 +219,16 @@ namespace Chest
             foreach (LootLine existing in Lines)
                 if (existing.Id == id) return existing;
             return null;
+        }
+
+        static LootCommit Clone(LootCommit source)
+        {
+            if (source == null) return null;
+            LootCommit copy = new LootCommit();
+            copy.Value = source.Value;
+            foreach (LootLine item in source.Items)
+                copy.Items.Add(new LootLine { Id = item.Id, Name = item.Name, Quantity = item.Quantity, Unknown = item.Unknown });
+            return copy;
         }
 
         static LootCommit Snapshot(IList<LootLine> items, long value)

@@ -502,16 +502,24 @@ namespace Chest
         public static int RerollCount(Frame frame, Rectangle panel)
         {
             if (frame == null || panel.Width < Px(200)) return -1;
+            int strict = ReadCharge(frame, panel, false);
+            if (strict >= 0) return strict;
+            if (SpentReroll(frame, panel)) return 0;
+            return ReadCharge(frame, panel, true);
+        }
+
+        static int ReadCharge(Frame frame, Rectangle panel, bool hover)
+        {
             int paren = -1;
             for (int x = panel.X + Px(255); x < panel.X + Px(278); x++)
             {
                 int ink = 0;
                 for (int y = panel.Y + Px(200); y < panel.Y + Px(216); y++)
-                    if (ButtonInk(frame, x, y)) ink++;
+                    if (ButtonInk(frame, x, y, hover)) ink++;
                 if (ink < Px(6)) continue;
                 int left = 0;
                 for (int y = panel.Y + Px(200); y < panel.Y + Px(216); y++)
-                    if (ButtonInk(frame, x - Px(1), y)) left++;
+                    if (ButtonInk(frame, x - Px(1), y, hover)) left++;
                 if (left < Px(3)) paren = x;
             }
             if (paren < 0) return SpentReroll(frame, panel) ? 0 : -1;
@@ -527,7 +535,7 @@ namespace Chest
                     string row = rows[y];
                     for (int x = 0; x < row.Length; x++)
                     {
-                        bool on = ButtonInk(frame, paren - Px(8) + Px(x), panel.Y + Px(203 + y));
+                        bool on = ButtonInk(frame, paren - Px(8) + Px(x), panel.Y + Px(203 + y), hover);
                         bool want = row[x] == '#';
                         if (on == want) score++;
                         compared++;
@@ -578,11 +586,17 @@ namespace Chest
             return white >= Px(100);
         }
 
-        static bool ButtonInk(Frame frame, int x, int y)
+        static bool ButtonInk(Frame frame, int x, int y, bool hover)
         {
             int r, g, b;
             frame.Get(x, y, out r, out g, out b);
-            return r + g + b < 120 && r < 110 && g < 90;
+            int sum = r + g + b;
+            if (sum < 120 && r < 110 && g < 90) return true;
+            if (!hover) return false;
+            int br, bg, bb;
+            frame.Get(x, Math.Max(0, y - 6), out br, out bg, out bb);
+            int back = br + bg + bb;
+            return sum < 210 && back > sum + 180 && r + 40 < br;
         }
 
         // 5-wide glyphs taken from the reward button, plus the same stroke style for 0-2.
@@ -605,8 +619,8 @@ namespace Chest
         public int MissesBeforeClose = 8;
         public int CloseAfterMilliseconds = 450;
         public int RerollMemoryMilliseconds = 3000;
-        public int InPlaceMilliseconds = 200;
-        public int StableReads = 3;
+        public int CompletionMilliseconds = 300;
+        public int RerollFixMilliseconds = 500;
         public bool Open;
         public System.Func<int> Clock;
         int misses;
@@ -614,11 +628,10 @@ namespace Chest
         int heldCharges = -1;
         int closedAt;
         bool haveClosedAt;
-        int pendingAt;
-        bool ready;
+        int loggedAt;
+        bool openedInPlace;
+        bool rerollPending;
         string logged = "";
-        string pending = "";
-        int pendingSeen;
 
         int Now()
         {
@@ -633,18 +646,22 @@ namespace Chest
             return elapsed;
         }
 
-        void ClearPending()
-        {
-            pending = "";
-            pendingSeen = 0;
-            ready = false;
-        }
-
-        void Remember(int charges, string mark)
+        void Remember(int charges, string mark, bool inPlace)
         {
             if (charges >= 0) heldCharges = charges;
             logged = mark ?? "";
-            ClearPending();
+            loggedAt = Now();
+            openedInPlace = inPlace;
+            rerollPending = false;
+        }
+
+        static int MarkValue(string mark)
+        {
+            if (string.IsNullOrEmpty(mark)) return 0;
+            int bar = mark.IndexOf('|');
+            string head = bar < 0 ? mark : mark.Substring(0, bar);
+            int value;
+            return int.TryParse(head, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value) ? value : 0;
         }
 
         bool Dropped(int charges)
@@ -656,7 +673,6 @@ namespace Chest
         {
             if (!visible)
             {
-                ClearPending();
                 if (!Open) return "none";
                 if (misses == 0) missAt = Now();
                 misses++;
@@ -673,56 +689,62 @@ namespace Chest
                 return "none";
             }
             misses = 0;
-            // n falling by one is a reroll, even if the items moved first or the window blinked.
+            mark = mark ?? "";
+            if (rerollPending && mark.Length > 0 && mark != logged)
+            {
+                Open = true;
+                Remember(charges, mark, false);
+                return "replaced";
+            }
             if (Dropped(charges))
             {
                 int since = haveClosedAt ? Elapsed(closedAt) : 0;
-                if (Open || since <= RerollMemoryMilliseconds)
+                bool live = Open || since <= RerollMemoryMilliseconds;
+                if (live && (mark.Length == 0 || mark == logged))
+                {
+                    // The button changed before the new items were drawn.
+                    if (openedInPlace && Elapsed(loggedAt) <= RerollFixMilliseconds)
+                    {
+                        Open = true;
+                        Remember(charges, mark, false);
+                        return "coalesce";
+                    }
+                    if (charges >= 0) heldCharges = charges;
+                    rerollPending = true;
+                    return "none";
+                }
+                if (live)
                 {
                     Open = true;
-                    Remember(charges, mark);
+                    Remember(charges, mark, false);
                     return "replaced";
                 }
             }
             if (!Open)
             {
                 // Alt-tab, or any gap, must not count the same reward a second time.
-                if (!string.IsNullOrEmpty(logged) && (mark ?? "") == logged)
+                if (!string.IsNullOrEmpty(logged) && mark == logged)
                 {
                     Open = true;
                     if (charges >= 0) heldCharges = charges;
-                    ClearPending();
                     return "none";
                 }
                 Open = true;
-                Remember(charges, mark);
+                Remember(charges, mark, false);
                 return "opened";
             }
-            if (charges >= 0) heldCharges = charges;
-            if (string.IsNullOrEmpty(mark) || mark == logged)
+            if (charges >= 0 && !rerollPending) heldCharges = charges;
+            if (mark.Length == 0 || mark == logged) return "none";
+            int loggedValue = MarkValue(logged);
+            int nextValue = MarkValue(mark);
+            bool sameValue = loggedValue > 0 && loggedValue == nextValue && Elapsed(loggedAt) <= CompletionMilliseconds;
+            bool sameCount = charges < 0 || charges == heldCharges;
+            if (sameValue && sameCount)
             {
-                ClearPending();
-                return "none";
+                Remember(charges, mark, false);
+                return "replaced";
             }
-            // Items changed while n is still the same. Wait for a settled read, then one
-            // more tick, so a reroll that lands on the next frame replaces instead.
-            if (mark != pending)
-            {
-                pending = mark;
-                pendingSeen = 1;
-                pendingAt = Now();
-                ready = false;
-                return "none";
-            }
-            pendingSeen++;
-            int need = StableReads < 3 ? 3 : StableReads;
-            if (pendingSeen < need || Elapsed(pendingAt) < InPlaceMilliseconds) return "none";
-            if (!ready)
-            {
-                ready = true;
-                return "none";
-            }
-            Remember(charges, mark);
+            Remember(charges, mark, true);
             return "opened";
         }
 
@@ -734,11 +756,10 @@ namespace Chest
             heldCharges = -1;
             closedAt = 0;
             haveClosedAt = false;
-            pendingAt = 0;
-            ready = false;
+            loggedAt = 0;
+            openedInPlace = false;
+            rerollPending = false;
             logged = "";
-            pending = "";
-            pendingSeen = 0;
         }
     }
 }

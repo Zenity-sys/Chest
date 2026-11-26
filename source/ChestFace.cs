@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Globalization;
+using System.Windows.Forms;
 using System.IO;
 using System.Text;
 
@@ -272,7 +273,7 @@ namespace Chest
             SettingsLayout map = new SettingsLayout();
             int pad = 12;
             int inner = bounds.Width - pad * 2;
-            map.Close = new Rectangle(bounds.Right - 32, 4, 26, 22);
+            map.Close = new Rectangle(bounds.Right - 32, 8, 26, 22);
             int y = 118;
             map.Client = new Rectangle(pad + 12, y + 32, Math.Max(80, inner - 36 - 96), 26);
             map.Refresh = new Rectangle(bounds.Right - pad - 12 - 84, y + 32, 84, 26);
@@ -283,8 +284,8 @@ namespace Chest
             map.Open = new Rectangle(pad + 12, y + 156, 120, 28);
             map.Reset = new Rectangle(pad + 140, y + 156, 130, 28);
             y = 518;
-            map.Splash = new Rectangle(pad + 12, y + 30, 160, 28);
-            map.Updates = new Rectangle(pad + 180, y + 30, 150, 28);
+            map.Splash = new Rectangle(pad + 12, y + 30, 200, 30);
+            map.Updates = new Rectangle(pad + 220, y + 30, 200, 30);
             return map;
         }
 
@@ -310,14 +311,13 @@ namespace Chest
         public static void DrawSettings(Graphics g, Rectangle bounds, string client, bool grid, int caskets, long value, IList<long> opens)
         {
             SettingsLayout map = SettingsMap(bounds);
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
             using (Brush bg = new SolidBrush(KavrosTheme.Bg)) g.FillRectangle(bg, bounds);
             using (Brush gold = new SolidBrush(KavrosTheme.Gold)) g.FillRectangle(gold, 0, 0, bounds.Width, 2);
-            using (Brush bar = new SolidBrush(Color.FromArgb(13, 22, 32))) g.FillRectangle(bar, 0, 2, bounds.Width, 26);
+            using (Brush bar = new SolidBrush(Color.FromArgb(13, 22, 32))) g.FillRectangle(bar, 0, 2, bounds.Width, 34);
             using (Pen edge = new Pen(Color.FromArgb(36, 56, 74))) g.DrawRectangle(edge, 0, 0, bounds.Width - 1, bounds.Height - 1);
-            DrawCrest(g, new Rectangle(8, 6, 16, 18));
-            using (Brush ink = new SolidBrush(KavrosTheme.Text))
-                g.DrawString("Kavros Chest  ·  " + AppBranding.FullVersion, KavrosTheme.Ui(9F, false), ink, 28, 6);
+            DrawCrest(g, new Rectangle(10, 10, 18, 18));
+            DrawLeft(g, "Kavros Chest  ·  " + AppBranding.FullVersion, KavrosTheme.Ui(9F, false), KavrosTheme.Text, new Rectangle(32, 8, bounds.Width - 72, 22));
             DrawFlat(g, map.Close, "×", false, false, false);
 
             DrawCrest(g, new Rectangle(16, 40, 64, 68));
@@ -576,14 +576,39 @@ namespace Chest
             if (hot && !primary) fill = Color.FromArgb(34, 54, 71);
             if (down) fill = primary ? Color.FromArgb(213, 178, 107) : Color.FromArgb(20, 34, 46);
             KavrosTheme.FillRounded(g, rect, 3, fill, edge);
-            using (Brush brush = new SolidBrush(ink))
-            using (StringFormat format = new StringFormat())
+            DrawCentered(g, text, KavrosTheme.Ui(8F, primary), ink, rect);
+        }
+
+        static void DrawCentered(Graphics g, string text, Font font, Color color, Rectangle rect)
+        {
+            Rectangle padded = new Rectangle(rect.X + 6, rect.Y + 3, Math.Max(1, rect.Width - 12), Math.Max(1, rect.Height - 6));
+            DrawFitted(g, text, font, color, padded, true);
+        }
+
+        static void DrawLeft(Graphics g, string text, Font font, Color color, Rectangle rect)
+        {
+            DrawFitted(g, text, font, color, rect, false);
+        }
+
+        static void DrawFitted(Graphics g, string text, Font font, Color color, Rectangle rect, bool center)
+        {
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis;
+            flags |= center ? TextFormatFlags.HorizontalCenter : TextFormatFlags.Left;
+            try
             {
-                format.Alignment = StringAlignment.Center;
+                TextRenderer.DrawText(g, text, font, rect, color, flags);
+                return;
+            }
+            catch (Exception) { }
+            using (Brush brush = new SolidBrush(color))
+            using (StringFormat format = new StringFormat(StringFormat.GenericDefault))
+            {
+                format.Alignment = center ? StringAlignment.Center : StringAlignment.Near;
                 format.LineAlignment = StringAlignment.Center;
-                format.FormatFlags = StringFormatFlags.NoWrap;
+                format.FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.NoClip;
                 format.Trimming = StringTrimming.EllipsisCharacter;
-                g.DrawString(text, KavrosTheme.Ui(8F, primary), brush, rect, format);
+                g.DrawString(text, font, brush, rect, format);
             }
         }
 
