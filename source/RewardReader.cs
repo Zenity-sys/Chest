@@ -346,18 +346,16 @@ namespace Chest
                 if (IsBang(row)) bang = i;
             }
             if (colon < 0 || bang <= colon + 1) return false;
+            // COINS! is the tight cluster ending at '!'. A wide comma further left
+            // must not end the number, even when that comma gap is the widest gap.
             int word = bang;
-            int bestGap = -1;
-            for (int i = bang; i > colon + 1; i--)
+            while (word > colon + 1)
             {
-                int gap = runs[i][0] - runs[i - 1][1] - 1;
-                if (gap > bestGap)
-                {
-                    bestGap = gap;
-                    word = i;
-                }
+                int gap = runs[word][0] - runs[word - 1][1] - 1;
+                if (gap >= Px(4)) break;
+                word--;
             }
-            if (bestGap < Px(3) || word <= colon + 1) return false;
+            if (word <= colon + 1) return false;
             StringBuilder text = new StringBuilder();
             for (int i = colon + 1; i < word; i++)
             {
@@ -429,8 +427,8 @@ namespace Chest
                 }
             }
             if (score < 0) { score = 0; return false; }
-            if (score >= 0.80) return true;
-            return score >= 0.68 && recall >= 0.78 && score >= second + 0.06;
+            if (score >= 0.72) return true;
+            return score >= 0.60 && recall >= 0.70 && score >= second + 0.05;
         }
 
         static double OnRecall(Frame frame, int x, int y, Glyph glyph)

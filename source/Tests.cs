@@ -23,6 +23,7 @@ namespace Chest
             Latch();
             Book();
             Icons(root);
+            UnknownSet(root);
             WikiFallback(root);
             Fixtures(root);
             Preview(root);
@@ -159,6 +160,63 @@ namespace Chest
             try { Directory.Delete(dir, true); } catch (Exception) { }
         }
 
+        static void UnknownSet(string root)
+        {
+            string dir = Path.Combine(root, "fixtures", "unknown-v066");
+            List<IconRef> icons = IconLibrary.Load(Path.Combine(root, "assets", "icons"), Path.Combine(root, "assets", "icons", "catalog.txt"));
+            string[] knownFiles = new string[] {
+                "00035448144f4300", "0015c0af8fdf3d30", "0024c1560f7a3620", "004c726fe7cd4b08",
+                "0050ed14011b0200", "0051520f86cd1914", "0051520f86cd981c", "00811acd66acc880",
+                "0087739680c64078", "00c32aa408441c86", "00c5870746041038", "00d1c3b617c38686",
+                "00e9f15129f8ae34"
+            };
+            string[] knownNames = new string[] {
+                "Box of clue scrolls", "Huge plated rune salvage", "Holy biscuits", "Yew seed",
+                "Onyx bolt tips", "Holy biscuits", "Holy biscuits", "Yew seed",
+                "Black dragonhide", "Small prismatic fallen star", "Runite stone spirit", "Yew seed",
+                "Purple sweets"
+            };
+            string[] files = Directory.GetFiles(dir, "*.png");
+            Array.Sort(files);
+            Check(files.Length == 66, "the 66 unknown references are present (" + files.Length + ")");
+            int named = 0;
+            foreach (string file in files)
+            {
+                string id = Path.GetFileNameWithoutExtension(file);
+                Frame frame = FramePng.Decode(file);
+                if (frame == null) { Check(false, "load " + id); continue; }
+                IconHit hit = IconLibrary.Match(icons, frame.Bgra, frame.Width, frame.Height, 0.90);
+                string want = "";
+                for (int i = 0; i < knownFiles.Length; i++)
+                    if (knownFiles[i] == id) want = knownNames[i];
+                if (want.Length > 0)
+                {
+                    bool ok = hit.Known && hit.Name == want;
+                    Check(ok, id + " matches " + want + " (" + hit.Name + " " + hit.Score.ToString("0.00") + ")");
+                    if (ok) named++;
+                }
+                else Check(!hit.Known, id + " stays unrecognised (" + hit.Candidate + " " + hit.Score.ToString("0.00") + ")");
+            }
+            Check(named == 13, "13 of the 66 references are recognised (" + named + ")");
+            string[] notes = new string[] {
+                "00870a0403828478", "00870a44c382047a", "00871a440306047a",
+                "00871a74800a8478", "008743c7a304417a", "0087739680c64078"
+            };
+            int unwrapped = 0;
+            foreach (string note in notes)
+            {
+                Frame frame = FramePng.Decode(Path.Combine(dir, note + ".png"));
+                int width, height;
+                byte[] inner = frame == null ? null : Noted.InnerIcon(frame.Bgra, frame.Width, frame.Height, out width, out height);
+                if (inner != null) unwrapped++;
+                Check(inner != null, note + " unwraps the noted item");
+            }
+            Check(unwrapped == 6, "all six noted icons unwrap");
+            Frame coin = FramePng.Decode(Path.Combine(root, "assets", "icons", "coins-10000.png"));
+            int coinW, coinH;
+            Check(coin != null && Noted.InnerIcon(coin.Bgra, coin.Width, coin.Height, out coinW, out coinH) == null, "a coin sprite is not treated as a note");
+        }
+
         static void Icons(string root)
         {
             List<IconRef> icons = IconLibrary.Load(Path.Combine(root, "assets", "icons"), Path.Combine(root, "assets", "icons", "catalog.txt"));
@@ -275,6 +333,8 @@ namespace Chest
             Check(!WikiLookup.AllowRename(5, "Magic shortbow"), "a stack is not renamed to a bow");
             Check(WikiLookup.AllowRename(150, "Air rune"), "a stack of runes can still be named");
             Check(WikiLookup.AllowRename(1, "Staff of earth"), "one staff can still be named");
+            Check(!WikiLookup.AllowRename(50, "Staff of fire"), "a stack of 50 is not a staff of fire");
+            Check(!WikiLookup.AllowRename(50, "Sealed clue scroll"), "a stack is not a clue");
             string dir = Path.Combine(Path.GetTempPath(), "chest-gear-" + Guid.NewGuid().ToString("N"));
             LootBook book = new LootBook(dir);
             book.Commit(new LootLine[] {
@@ -303,6 +363,15 @@ namespace Chest
             WikiLookup.Reset();
             WikiHit ambiguous = WikiLookup.Identify(brown, 32, 32);
             Check(!ambiguous.Confident, "an ambiguous wiki match stays Unknown (" + ambiguous.Score.ToString("0.00") + "/" + ambiguous.Second.ToString("0.00") + ")");
+            string stale = Path.Combine(dir, "wiki-cache");
+            Directory.CreateDirectory(stale);
+            File.WriteAllText(Path.Combine(stale, "schema.txt"), "1");
+            File.WriteAllBytes(Path.Combine(stale, "staff-of-fire.png"), new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+            File.WriteAllText(Path.Combine(stale, "staff-of-fire.txt"), "Staff of fire\r\n");
+            WikiLookup.CacheDirectory = stale;
+            WikiLookup.PrepareCache();
+            bool renamed = book.RenameUnknown("item-stack", "staff-of-fire", "Staff of fire", 50);
+            Check(!renamed && !File.Exists(Path.Combine(stale, "staff-of-fire.png")) && File.ReadAllText(Path.Combine(stale, "schema.txt")).Trim() == "2", "a stale wiki cache cannot rename a stack of 50 to staff of fire");
             WikiLookup.UseAssets(Path.Combine(root, "assets"));
             WikiLookup.Reset();
             try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch (Exception) { }
@@ -350,6 +419,7 @@ namespace Chest
             Check(StampAnchored(value, "100,000,000") == 100000000L, "100,000,000 keeps every digit");
             Check(StampAnchored(value, "1,850,960") == 1850960L, "1,850,960 is not cut at the comma");
             Check(StampAnchored(value, "2,500,000,000") == 2500000000L, "2,500,000,000 fits without overflowing");
+            Check(StampAnchored(value, "163,422,091", 10, 8, 5) == 163422091L, "a wide comma does not stop the value at 163");
             RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
             int[][] quantities = new int[][] {
                 new int[] { 1, 1, 1, 1, 2 },
@@ -771,7 +841,7 @@ namespace Chest
             return shot.Value;
         }
 
-        static long StampAnchored(List<Glyph> glyphs, string text)
+        static long StampAnchored(List<Glyph> glyphs, string text, int commaBefore = 3, int commaAfter = 5, int bangGap = 14)
         {
             Frame frame = new Frame(new byte[640 * 280 * 4], 640, 280);
             for (int i = 0; i < frame.Bgra.Length; i += 4)
@@ -796,10 +866,10 @@ namespace Chest
                 char ch = text[c];
                 if (ch == ',')
                 {
-                    x += 3;
+                    x += commaBefore;
                     PaintValue(frame, x, y + 6, 236, 236, 246);
                     PaintValue(frame, x, y + 7, 236, 236, 246);
-                    x += 5;
+                    x += commaAfter;
                     continue;
                 }
                 if (ch < '0' || ch > '9') continue;
@@ -814,7 +884,7 @@ namespace Chest
                     }
                 x += glyph.Width + 1;
             }
-            x += 14;
+            x += bangGap;
             for (int xx = 0; xx < 2; xx++)
             {
                 for (int yy = 0; yy < 5; yy++) PaintValue(frame, x + xx, y + yy, 236, 236, 246);

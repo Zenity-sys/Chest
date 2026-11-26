@@ -25,6 +25,7 @@ namespace Chest
         public const double MinimumShape = 0.90;
         public const double MinimumMargin = 0.05;
         public const double AmbiguousScore = 0.90;
+        public const int CacheSchema = 2;
 
         public static string IndexPath = "";
         public static string IconDirectory = "";
@@ -98,12 +99,51 @@ namespace Chest
             string text = name.ToLowerInvariant();
             string[] parts = new string[] {
                 "staff", "stave", "crossbow", "helm", "platebody", "platelegs", "plateskirt",
-                "kiteshield", "amulet", "beret", "crozier", "tights", "stole"
+                "kiteshield", "shield", "amulet", "beret", "crozier", "tights", "stole",
+                "coif", "vambrace", "sword", "scimitar", "dagger", "mace", "spear", "whip",
+                "wand", "defender", "necklace", "bracelet", "gauntlet", "clue", "casket"
             };
             for (int i = 0; i < parts.Length; i++)
                 if (text.IndexOf(parts[i], StringComparison.Ordinal) >= 0) return true;
             if (text.IndexOf("bow", StringComparison.Ordinal) >= 0 && text.IndexOf("bowl", StringComparison.Ordinal) < 0) return true;
+            if (HasWord(text, "ring")) return true;
             return false;
+        }
+
+        static bool HasWord(string text, string word)
+        {
+            int from = 0;
+            while (from < text.Length)
+            {
+                int i = text.IndexOf(word, from, StringComparison.Ordinal);
+                if (i < 0) return false;
+                bool before = i > 0 && char.IsLetter(text[i - 1]);
+                int after = i + word.Length;
+                bool afterLetter = after < text.Length && char.IsLetter(text[after]);
+                if (!before && !afterLetter) return true;
+                from = i + word.Length;
+            }
+            return false;
+        }
+
+        // Drops wiki sprites saved before this schema. Old files renamed stacks onto gear.
+        public static void PrepareCache()
+        {
+            if (string.IsNullOrEmpty(CacheDirectory)) return;
+            try
+            {
+                Directory.CreateDirectory(CacheDirectory);
+                string stamp = Path.Combine(CacheDirectory, "schema.txt");
+                string have = File.Exists(stamp) ? File.ReadAllText(stamp).Trim() : "";
+                if (have == CacheSchema.ToString(System.Globalization.CultureInfo.InvariantCulture)) return;
+                foreach (string file in Directory.GetFiles(CacheDirectory))
+                {
+                    if (string.Equals(Path.GetFileName(file), "schema.txt", StringComparison.OrdinalIgnoreCase)) continue;
+                    try { File.Delete(file); } catch (Exception) { }
+                }
+                File.WriteAllText(stamp, CacheSchema.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            catch (Exception ex) { CrashLog.Write(ex); }
         }
 
         // Returns at once. The callback runs later, off the caller thread.
@@ -137,6 +177,7 @@ namespace Chest
             {
                 try
                 {
+                    PrepareCache();
                     Directory.CreateDirectory(CacheDirectory);
                     string cached = Path.Combine(CacheDirectory, SafeFile(hit.FileName));
                     if (IsPng(cached))
@@ -156,7 +197,7 @@ namespace Chest
                     string temp = cached + ".part";
                     using (WebClient client = new WikiClient())
                     {
-                        client.Headers["User-Agent"] = "Chest/0.6.7 (reward logger)";
+                        client.Headers["User-Agent"] = "Chest/0.6.8 (reward logger)";
                         client.DownloadFile(url, temp);
                     }
                     if (!IsPng(temp))

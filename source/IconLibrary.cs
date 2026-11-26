@@ -160,7 +160,20 @@ namespace Chest
             IconHit hit = new IconHit();
             if (icons == null || crop == null || width < 2) return hit;
             byte[] prepared = Noted.CleanForDisplay(crop, width, height);
-            byte[] query = Normalize(prepared, width, height);
+            hit = ScorePatch(icons, Normalize(prepared, width, height), minimum);
+            int innerW, innerH;
+            byte[] inner = Noted.InnerIcon(crop, width, height, out innerW, out innerH);
+            if (inner == null) return hit;
+            IconHit alt = ScorePatch(icons, Normalize(inner, innerW, innerH), minimum);
+            if (!alt.Known) return hit;
+            if (!hit.Known || alt.Score > hit.Score) return alt;
+            return hit;
+        }
+
+        static IconHit ScorePatch(List<IconRef> icons, byte[] query, double minimum)
+        {
+            IconHit hit = new IconHit();
+            if (icons == null || query == null) return hit;
             foreach (IconRef icon in icons)
             {
                 if (icon.Patch == null) continue;
