@@ -1,5 +1,7 @@
 ## 0.6.1
 
+- Settings opens beside the reward panel. Closing Settings leaves the panel open.
+- A reroll replaces the last casket, including when the window blinks or the items change a moment before the reroll number drops.
 - An open casket is counted once. The same items, quantities, and value are ignored when the picture shifts.
 - A short blink of the reward window does not start a new casket. A padded grab that misses the title checks the whole client before calling it closed.
 - Yellow stack numbers on bright icons read the full count, including 150.

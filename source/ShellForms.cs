@@ -93,6 +93,17 @@ namespace Chest
             windows.SetBounds(slot.X, slot.Y, slot.Width, slot.Height);
         }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+            base.OnFormClosing(e);
+        }
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);

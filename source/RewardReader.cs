@@ -570,12 +570,18 @@ namespace Chest
     {
         public int MissesBeforeClose = 8;
         public int CloseAfterMilliseconds = 450;
-        public int StableReads = 2;
+        public int RerollMemoryMilliseconds = 3000;
+        public int InPlaceMilliseconds = 200;
+        public int StableReads = 3;
         public bool Open;
         public System.Func<int> Clock;
         int misses;
         int missAt;
-        int charges = -1;
+        int heldCharges = -1;
+        int closedAt;
+        bool haveClosedAt;
+        int pendingAt;
+        bool ready;
         string logged = "";
         string pending = "";
         int pendingSeen;
@@ -586,61 +592,96 @@ namespace Chest
             return Environment.TickCount;
         }
 
+        int Elapsed(int start)
+        {
+            int elapsed = unchecked(Now() - start);
+            if (elapsed < 0) return RerollMemoryMilliseconds;
+            return elapsed;
+        }
+
+        void ClearPending()
+        {
+            pending = "";
+            pendingSeen = 0;
+            ready = false;
+        }
+
+        void Remember(int charges, string mark)
+        {
+            if (charges >= 0) heldCharges = charges;
+            logged = mark ?? "";
+            ClearPending();
+        }
+
+        bool Dropped(int charges)
+        {
+            return heldCharges >= 0 && charges == heldCharges - 1;
+        }
+
         public string See(bool visible, int charges, string mark)
         {
             if (!visible)
             {
-                pending = "";
-                pendingSeen = 0;
+                ClearPending();
                 if (!Open) return "none";
                 if (misses == 0) missAt = Now();
                 misses++;
-                int elapsed = unchecked(Now() - missAt);
-                if (elapsed < 0) elapsed = CloseAfterMilliseconds;
+                int elapsed = Elapsed(missAt);
                 // A hover or a bad grab blinks for a frame or two. That is not a close.
                 if (misses >= MissesBeforeClose || elapsed >= CloseAfterMilliseconds)
                 {
                     Open = false;
                     misses = 0;
-                    this.charges = -1;
+                    closedAt = Now();
+                    haveClosedAt = true;
                     logged = "";
                     return "closed";
                 }
                 return "none";
             }
             misses = 0;
+            // n falling by one is a reroll, even if the items moved first or the window blinked.
+            if (Dropped(charges))
+            {
+                int since = haveClosedAt ? Elapsed(closedAt) : 0;
+                if (Open || since <= RerollMemoryMilliseconds)
+                {
+                    Open = true;
+                    Remember(charges, mark);
+                    return "replaced";
+                }
+            }
             if (!Open)
             {
                 Open = true;
-                this.charges = charges;
-                logged = mark ?? "";
-                pending = "";
-                pendingSeen = 0;
+                Remember(charges, mark);
                 return "opened";
             }
-            if (this.charges >= 0 && charges == this.charges - 1)
-            {
-                this.charges = charges;
-                logged = mark ?? "";
-                pending = "";
-                pendingSeen = 0;
-                return "replaced";
-            }
-            if (charges >= 0) this.charges = charges;
+            if (charges >= 0) heldCharges = charges;
             if (string.IsNullOrEmpty(mark) || mark == logged)
             {
-                pending = "";
-                pendingSeen = 0;
+                ClearPending();
                 return "none";
             }
-            // A half-drawn frame changes again. Only a repeated read is a new casket.
-            if (mark == pending) pendingSeen++;
-            else { pending = mark; pendingSeen = 1; }
-            int need = StableReads < 2 ? 2 : StableReads;
-            if (pendingSeen < need) return "none";
-            logged = mark;
-            pending = "";
-            pendingSeen = 0;
+            // Items changed while n is still the same. Wait for a settled read, then one
+            // more tick, so a reroll that lands on the next frame replaces instead.
+            if (mark != pending)
+            {
+                pending = mark;
+                pendingSeen = 1;
+                pendingAt = Now();
+                ready = false;
+                return "none";
+            }
+            pendingSeen++;
+            int need = StableReads < 3 ? 3 : StableReads;
+            if (pendingSeen < need || Elapsed(pendingAt) < InPlaceMilliseconds) return "none";
+            if (!ready)
+            {
+                ready = true;
+                return "none";
+            }
+            Remember(charges, mark);
             return "opened";
         }
 
@@ -649,7 +690,11 @@ namespace Chest
             Open = false;
             misses = 0;
             missAt = 0;
-            charges = -1;
+            heldCharges = -1;
+            closedAt = 0;
+            haveClosedAt = false;
+            pendingAt = 0;
+            ready = false;
             logged = "";
             pending = "";
             pendingSeen = 0;

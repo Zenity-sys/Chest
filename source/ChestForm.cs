@@ -424,11 +424,17 @@ namespace Chest
         void ShowSettings()
         {
             if (settingsForm == null || settingsForm.IsDisposed) return;
+            if (!Visible) Show();
             Opacity = 1;
             settingsForm.PlaceBeside(this);
             if (!settingsForm.Visible) settingsForm.Show(this);
             settingsForm.BringToFront();
             settingsForm.Invalidate();
+        }
+
+        bool SettingsOpen()
+        {
+            return settingsForm != null && !settingsForm.IsDisposed && settingsForm.Visible;
         }
 
         void HookDrag(Control control)
@@ -1010,7 +1016,8 @@ namespace Chest
             bool minimised = Native.IsIconic(selected);
             bool gameFront = WindowLocator.IsForeground(selected);
             IntPtr front = Native.GetForegroundWindow();
-            bool panelFront = front == Handle || ContainsFocus || (IsHandleCreated && Native.GetAncestor(front, Native.GaRoot) == Handle);
+            bool settingsOpen = SettingsOpen();
+            bool panelFront = settingsOpen || front == Handle || ContainsFocus || (IsHandleCreated && Native.GetAncestor(front, Native.GaRoot) == Handle);
             string frontTitle = "";
             if (front != IntPtr.Zero && front != selected && front != Handle)
             {
@@ -1018,7 +1025,7 @@ namespace Chest
                 Native.GetWindowText(front, title, title.Capacity);
                 frontTitle = title.ToString();
             }
-            if (OverlayVisibility.CoveredByOtherClient(selected, front, frontTitle) || !FloatingPanelLayout.Shown(true, minimised, gameFront, panelFront))
+            if (!settingsOpen && (OverlayVisibility.CoveredByOtherClient(selected, front, frontTitle) || !FloatingPanelLayout.Shown(true, minimised, gameFront, panelFront, settingsOpen)))
             {
                 if (Visible) Hide();
                 topKnown = false;

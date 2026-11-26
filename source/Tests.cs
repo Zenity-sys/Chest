@@ -62,16 +62,32 @@ namespace Chest
             Check(repeats == 1 && held.See(true, 5, "jitter-" + repeats) == "none", "the same open window logged 100 times is one casket");
 
             RewardSession inplace = new RewardSession();
+            int place = 0;
+            inplace.Clock = delegate { return place; };
             string stay = inplace.See(true, 5, "casket-a");
             string againSame = inplace.See(true, 5, "casket-a");
+            place = 10;
             string half = inplace.See(true, 5, "casket-b-partial");
+            place = 20;
             string next = inplace.See(true, 5, "casket-b");
+            place = 30;
+            string early = inplace.See(true, 5, "casket-b");
+            place = 230;
+            string armed = inplace.See(true, 5, "casket-b");
+            place = 240;
             string settled = inplace.See(true, 5, "casket-b");
+            place = 250;
             string heldOpen = inplace.See(true, 5, "casket-b");
-            Check(stay == "opened" && againSame == "none" && half == "none" && next == "none" && settled == "opened" && heldOpen == "none", "an in-place casket counts once the new read settles");
+            Check(stay == "opened" && againSame == "none" && half == "none" && next == "none" && early == "none" && armed == "none" && settled == "opened" && heldOpen == "none", "an in-place casket counts once the new read settles");
+            place = 300;
             string raised = inplace.See(true, 6, "casket-c");
+            place = 310;
+            string raisedMid = inplace.See(true, 6, "casket-c");
+            place = 520;
+            string raisedArmed = inplace.See(true, 6, "casket-c");
+            place = 530;
             string raisedAgain = inplace.See(true, 6, "casket-c");
-            Check(raised == "none" && raisedAgain == "opened", "n going up on the same window is a new casket");
+            Check(raised == "none" && raisedMid == "none" && raisedArmed == "none" && raisedAgain == "opened", "n going up on the same window is a new casket");
             string reroll = inplace.See(true, 5, "casket-c-reroll");
             Check(reroll == "replaced", "n dropping by one on the same window is still a reroll");
 
@@ -104,6 +120,8 @@ namespace Chest
             Check(FloatingPanelLayout.WantTopMost(true, false, true, false), "topmost while the game is in front");
             Check(!FloatingPanelLayout.WantTopMost(true, false, false, false), "not topmost over another app");
             Check(FloatingPanelLayout.Shown(true, false, false, true), "the panel stays while it is being used");
+            Check(FloatingPanelLayout.Shown(true, false, false, false, true), "settings keeps the overlay open beside it");
+            Check(!FloatingPanelLayout.Shown(true, false, false, false), "another app hides the overlay");
             Check(!FloatingPanelLayout.Shown(true, true, true, true), "a minimised client hides the panel");
             Check(StackText.Format(1089) == "1089" && StackText.Format(10000) == "10K" && StackText.Format(100000) == "100K" && StackText.Format(1200000) == "1.2M", "stack numbers use K and M");
             int columns = ChestFace.Columns(440, 32, 12);
@@ -409,13 +427,17 @@ namespace Chest
                 if (i > 0)
                     for (int miss = 0; miss < session.MissesBeforeClose; miss++)
                         session.See(false, -1, null);
-                string action = session.See(true, RewardReader.RerollCount(frame, panel), shot.Fingerprint);
-                Check(action == "opened", "pipeline logs master-" + i + " as a new casket (" + action + ")");
+                int charges = RewardReader.RerollCount(frame, panel);
+                string action = session.See(true, charges, shot.Fingerprint);
+                string wanted = i >= 4 ? "replaced" : "opened";
+                Check(action == wanted, "pipeline logs master-" + i + " as " + wanted + " (" + action + ")");
                 if (action == "opened")
                     book.Commit(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
+                else if (action == "replaced")
+                    book.ReplaceLast(new LootLine[] { new LootLine { Id = "pipe-" + i, Name = "Casket", Quantity = 1 } }, shot.Value);
             }
             clock.Stop();
-            Check(book.Caskets == 6, "pipeline logged six caskets (" + book.Caskets + ")");
+            Check(book.Caskets == 4, "pipeline keeps the two rerolls on the open count (" + book.Caskets + ")");
             Check(first > 0 && first < 800, "full client master-0 is read in " + first + " ms");
             Check(clock.ElapsedMilliseconds < 2500, "all six reward shots are read in " + clock.ElapsedMilliseconds + " ms");
             try { Directory.Delete(dir, true); } catch (Exception) { }
@@ -714,14 +736,52 @@ namespace Chest
             string held = closed.See(true, 5, mark);
             Check(shut == "closed" && reopen == "opened" && held == "none", "a 500 ms close counts the next open once");
 
-            RewardSession swapped = new RewardSession();
-            string first = swapped.See(true, 5, mark);
-            string half = swapped.See(true, 5, "9000|rune-platebodyx1");
-            string settled = swapped.See(true, 5, "9000|rune-platebodyx1");
-            string stay = swapped.See(true, 5, "9000|rune-platebodyx1");
-            string roll = swapped.See(true, 4, "9000|rune-platebodyx1");
-            string after = swapped.See(true, 4, "9000|rune-platebodyx1");
-            Check(first == "opened" && half == "none" && settled == "opened" && stay == "none" && roll == "replaced" && after == "none", "an in-place casket counts once and a reroll replaces it");
+            RewardSession gap = new RewardSession();
+            int gapNow = 0;
+            gap.Clock = delegate { return gapNow; };
+            string gapOpen = gap.See(true, 5, "loot");
+            gapNow = 20;
+            gap.See(false, -1, null);
+            gapNow = 620;
+            string gapShut = gap.See(false, -1, null);
+            string gapBack = gap.See(true, 4, "loot-reroll");
+            Check(gapOpen == "opened" && gapShut == "closed" && gapBack == "replaced", "a reroll after a 600 ms blink replaces the casket");
+
+            RewardSession earlyRoll = new RewardSession();
+            string rollOpen = earlyRoll.See(true, 5, "loot");
+            string rollHalf = earlyRoll.See(true, 5, "loot-new");
+            string rollDrop = earlyRoll.See(true, 4, "loot-new");
+            string rollHold = earlyRoll.See(true, 4, "loot-new");
+            Check(rollOpen == "opened" && rollHalf == "none" && rollDrop == "replaced" && rollHold == "none", "items that change before n drops still replace the casket");
+
+            RewardSession sameN = new RewardSession();
+            int sameNow = 0;
+            sameN.Clock = delegate { return sameNow; };
+            string sameOpen = sameN.See(true, 5, "first");
+            sameNow = 10;
+            sameN.See(true, 5, "second");
+            sameNow = 20;
+            sameN.See(true, 5, "second");
+            sameNow = 230;
+            sameN.See(true, 5, "second");
+            sameNow = 240;
+            string sameSettled = sameN.See(true, 5, "second");
+            string sameStay = sameN.See(true, 5, "second");
+            Check(sameOpen == "opened" && sameSettled == "opened" && sameStay == "none", "the same reroll number with new items is a new casket");
+
+            RewardSession higher = new RewardSession();
+            int highNow = 0;
+            higher.Clock = delegate { return highNow; };
+            string highOpen = higher.See(true, 4, "low");
+            highNow = 10;
+            higher.See(true, 5, "high");
+            highNow = 20;
+            higher.See(true, 5, "high");
+            highNow = 230;
+            higher.See(true, 5, "high");
+            highNow = 240;
+            string highSettled = higher.See(true, 5, "high");
+            Check(highOpen == "opened" && highSettled == "opened", "n going up is a new casket");
 
             Check(!CaptureFollow.MissCounts(true, false, true), "a region miss that the full client still shows is not a close");
             Check(CaptureFollow.MissCounts(true, false, false), "a miss on the full client counts toward a close");
