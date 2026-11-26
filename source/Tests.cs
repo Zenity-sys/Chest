@@ -97,6 +97,13 @@ namespace Chest
             byte[] solid = new byte[32 * 32 * 4];
             for (int i = 0; i < solid.Length; i += 4) { solid[i] = 20; solid[i + 1] = 40; solid[i + 2] = 180; solid[i + 3] = 255; }
             Check(!Noted.LooksNoted(solid, 32, 32), "a plain item is not noted");
+            byte[] crop = new byte[40 * 40 * 4];
+            for (int i = 0; i < 40 * 40; i++) { crop[i * 4] = 40; crop[i * 4 + 1] = 48; crop[i * 4 + 2] = 56; crop[i * 4 + 3] = 255; }
+            for (int y = 14; y < 28; y++) for (int x = 14; x < 28; x++) { int o = (y * 40 + x) * 4; crop[o] = 20; crop[o + 1] = 20; crop[o + 2] = 180; }
+            for (int y = 2; y < 9; y++) for (int x = 2; x < 8; x++) { int o = (y * 40 + x) * 4; crop[o] = 30; crop[o + 1] = 220; crop[o + 2] = 255; }
+            byte[] cleaned = Noted.CleanForDisplay(crop, 40, 40);
+            Check(cleaned[(4 * 40 + 4) * 4 + 3] == 0, "a corner stack digit is removed from a crop");
+            Check(cleaned[(20 * 40 + 20) * 4 + 3] == 255 && cleaned[(20 * 40 + 20) * 4 + 2] == 180, "cleaning a crop keeps the item pixels");
         }
 
         static void Book()
@@ -121,7 +128,8 @@ namespace Chest
             roll.Commit(new LootLine[] { new LootLine { Id = "coins", Name = "Coins", Quantity = 100 } }, 5000);
             roll.ReplaceLast(new LootLine[] { new LootLine { Id = "coins", Name = "Coins", Quantity = 5 } }, 50);
             Check(roll.Caskets == 1 && roll.Lines.Count == 1 && roll.Lines[0].Quantity == 5 && roll.Value == 50, "a reroll replaces the logged casket");
-            Check(roll.UndoLast() && roll.Caskets == 0 && roll.Lines.Count == 0 && roll.Value == 0, "undo removes the last casket");
+            Check(roll.Opens.Count == 1 && roll.Opens[0] == 50, "a reroll keeps one history value");
+            Check(roll.UndoLast() && roll.Caskets == 0 && roll.Lines.Count == 0 && roll.Value == 0 && roll.Opens.Count == 0, "undo removes the last casket");
             Check(!roll.UndoLast(), "a second undo does nothing");
             try { Directory.Delete(dir, true); } catch (Exception) { }
         }
@@ -258,24 +266,9 @@ namespace Chest
                 slots.Add(slot);
             }
             Check(slots.Count >= 8, "preview icons");
-            using (Bitmap bitmap = new Bitmap(640, 300))
-            using (Graphics g = Graphics.FromImage(bitmap))
-            {
-                ChestFace.Draw(g, new Rectangle(0, 0, bitmap.Width, bitmap.Height), slots, 0, 6929679, 74, -1, -1, false, 32, 12, "Coins\n34", 80, 70);
-                string folder = Path.Combine(Path.GetTempPath(), "chest-preview");
-                Directory.CreateDirectory(folder);
-                bitmap.Save(Path.Combine(folder, "clue-rewards.png"), System.Drawing.Imaging.ImageFormat.Png);
-                string artifacts = "/opt/cursor/artifacts";
-                try
-                {
-                    if (Directory.Exists("/opt/cursor"))
-                    {
-                        Directory.CreateDirectory(artifacts);
-                        bitmap.Save(Path.Combine(artifacts, "clue-rewards.png"), System.Drawing.Imaging.ImageFormat.Png);
-                    }
-                }
-                catch (Exception) { }
-            }
+            ChestFace.LoadCrest(Path.Combine(root, "assets", "branding", "kavros-crest.png"));
+            RenderOverlay(slots, "grid", 6929679, 74, Path.Combine(Path.GetTempPath(), "chest-preview", "clue-rewards.png"));
+            RenderOverlay(slots, "grid", 6929679, 74, "/opt/cursor/artifacts/clue-rewards.png");
             foreach (SlotView slot in slots) if (slot.Image != null) slot.Image.Dispose();
             Check(true, "grid preview drawn");
         }
@@ -351,8 +344,15 @@ namespace Chest
                 }
             }
             Check(all.Count >= 5, "real reward crops matched into the grid (" + all.Count + ")");
-            SaveFace(all, 210202, 6, Path.Combine(Path.GetTempPath(), "chest-preview", "real-grid.png"), "real grid");
-            SaveFace(all, 210202, 6, "/opt/cursor/artifacts/clue-rewards-real.png", "real grid artifact");
+            long session = 0;
+            int[] values = new int[] { 210202, 210202, 253106, 69414, 23215, 97021 };
+            List<long> opens = new List<long>();
+            for (int i = 0; i < values.Length; i++) { session += values[i]; opens.Add(values[i]); }
+            ChestFace.LoadCrest(Path.Combine(root, "assets", "branding", "kavros-crest.png"));
+            RenderOverlay(all, "grid", session, 6, "/opt/cursor/artifacts/overlay-grid.png", opens);
+            RenderOverlay(all, "list", session, 6, "/opt/cursor/artifacts/overlay-list.png", opens);
+            RenderOverlay(all, "grid", session, 6, Path.Combine(Path.GetTempPath(), "chest-preview", "real-grid.png"), opens);
+            RenderChrome(root, session, opens);
             if (steps[0].Count > 0 && steps[1].Count > 0 && steps[2].Count > 0)
             {
                 using (Bitmap strip = new Bitmap(640 * 3, 300))
@@ -367,7 +367,7 @@ namespace Chest
                         using (Bitmap one = new Bitmap(640, 300))
                         using (Graphics face = Graphics.FromImage(one))
                         {
-                            ChestFace.Draw(face, new Rectangle(0, 0, 640, 300), carried, 0, running, i + 1, -1, -1, false, 32, 12, null, 0, 0);
+                            ChestFace.DrawOverlay(face, new Rectangle(0, 0, 640, 300), "Kavros", carried, 0, running, i + 1, null, 0, 0, "grid", false, null, "Opening " + (i + 1), true);
                             g.DrawImage(one, i * 640, 0);
                         }
                     }
@@ -448,15 +448,43 @@ namespace Chest
             return image;
         }
 
-        static void SaveFace(List<SlotView> slots, long value, int caskets, string path, string label)
+        static void RenderOverlay(List<SlotView> slots, string mode, long value, int caskets, string path, List<long> opens)
         {
             try
             {
-                using (Bitmap bitmap = new Bitmap(640, 360))
+                using (Bitmap bitmap = new Bitmap(420, 560))
                 using (Graphics g = Graphics.FromImage(bitmap))
                 {
-                    ChestFace.Draw(g, new Rectangle(0, 0, bitmap.Width, bitmap.Height), slots, 0, value, caskets, -1, -1, false, 32, 12, slots.Count > 0 ? slots[0].Name + "\n" + StackText.Format(slots[0].Quantity) : null, 70, 60);
+                    string detail = "Opening " + caskets;
+                    ChestFace.DrawOverlay(g, new Rectangle(0, 0, bitmap.Width, bitmap.Height), "Kavros", slots, 0, value, caskets, null, 0, 0, mode, false, opens, detail, true);
                     WritePng(bitmap, path);
+                }
+            }
+            catch (Exception) { }
+        }
+
+        static void RenderOverlay(List<SlotView> slots, string mode, long value, int caskets, string path)
+        {
+            RenderOverlay(slots, mode, value, caskets, path, null);
+        }
+
+        static void RenderChrome(string root, long value, List<long> opens)
+        {
+            try
+            {
+                using (Bitmap settings = new Bitmap(512, 680))
+                using (Graphics g = Graphics.FromImage(settings))
+                {
+                    ChestFace.DrawSettings(g, new Rectangle(0, 0, settings.Width, settings.Height), "Kavros", true, 6, value, opens);
+                    WritePng(settings, "/opt/cursor/artifacts/settings.png");
+                    WritePng(settings, Path.Combine(Path.GetTempPath(), "chest-preview", "settings.png"));
+                }
+                using (Bitmap splash = new Bitmap(640, 420))
+                using (Graphics g = Graphics.FromImage(splash))
+                {
+                    ChestFace.DrawSplash(g, new Rectangle(0, 0, splash.Width, splash.Height));
+                    WritePng(splash, "/opt/cursor/artifacts/splash.png");
+                    WritePng(splash, Path.Combine(root, "assets", "branding", "chest-splash.png"));
                 }
             }
             catch (Exception) { }

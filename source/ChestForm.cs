@@ -19,23 +19,30 @@ namespace Chest
         public byte[] Look;
     }
 
-    // The chest itself. Icons sit on the panel. Only the icon area scrolls, and only vertically.
+    // The chest itself. Icons sit on the dark panel. Only the icon area scrolls, and only vertically.
     internal sealed class ChestView : Panel
     {
         public ChestLayout Grid = new ChestLayout();
         public List<SlotView> Slots = new List<SlotView>();
+        public List<long> Opens = new List<long>();
         public long RewardValue;
         public int Caskets;
         public bool UndoArmed;
+        public bool Logged;
+        public bool HistoryOpen;
+        public string Mode = "grid";
+        public string Detail;
         public Action UndoClicked;
         public Action UnknownClicked;
+        public Action DebugClicked;
+        public Action<string> ModeChanged;
         int scroll, hot = -1, down = -1;
         string tip;
         Point tipAt;
         public ChestView()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque | ControlStyles.ResizeRedraw, true);
-            BackColor = Color.FromArgb(6, 14, 22);
+            BackColor = KavrosTheme.Bg;
             DoubleBuffered = true;
         }
         public void ShowSlots(List<SlotView> slots)
@@ -45,15 +52,10 @@ namespace Chest
             Invalidate();
         }
         int IconSize { get { return Grid.Icon > ChestFace.IconBox ? ChestFace.IconBox : Math.Max(16, Grid.Icon); } }
-        int IconGap { get { return Grid.Gap < 4 ? ChestFace.IconGap : Grid.Gap; } }
+        int HistoryCount { get { return Opens == null ? 0 : Opens.Count; } }
         int MaxScroll()
         {
-            Rectangle grid, clues, undo, unknown;
-            ChestFace.Content(ClientRectangle, out grid, out clues, out undo, out unknown);
-            int columns = ChestFace.Columns(grid.Width, IconSize, IconGap);
-            int rows = Slots.Count == 0 ? 0 : (Slots.Count + columns - 1) / columns;
-            int content = rows * (IconSize + 14);
-            return Math.Max(0, content - grid.Height);
+            return ChestFace.MaxScroll(ClientRectangle, Mode, IconSize, Slots.Count, HistoryOpen, HistoryCount);
         }
         protected override void OnPaintBackground(PaintEventArgs e) { }
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -67,10 +69,11 @@ namespace Chest
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            int hit = ChestFace.Hit(ClientRectangle, e.Location);
+            int hit = ChestFace.Hit(ClientRectangle, e.Location, Mode, IconSize, Slots.Count, HistoryOpen, HistoryCount);
             if (hit != hot) { hot = hit; Invalidate(); }
-            SlotView slot = HitIcon(e.Location);
-            string next = slot == null || string.IsNullOrEmpty(slot.Name) ? null : slot.Name + "\n" + StackText.Format(slot.Quantity);
+            int index = ChestFace.HitSlot(ClientRectangle, e.Location, scroll, Mode, IconSize, Slots.Count, HistoryOpen, HistoryCount);
+            SlotView slot = index < 0 ? null : Slots[index];
+            string next = slot == null || string.IsNullOrEmpty(slot.Name) ? null : slot.Name + " × " + ChestFace.Group(slot.Quantity);
             if (next != tip || tipAt != e.Location) { tip = next; tipAt = e.Location; Invalidate(); }
         }
         protected override void OnMouseLeave(EventArgs e)
@@ -85,42 +88,31 @@ namespace Chest
         {
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left) return;
-            down = ChestFace.Hit(ClientRectangle, e.Location);
+            down = ChestFace.Hit(ClientRectangle, e.Location, Mode, IconSize, Slots.Count, HistoryOpen, HistoryCount);
             Invalidate();
         }
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-            int hit = ChestFace.Hit(ClientRectangle, e.Location);
+            int hit = ChestFace.Hit(ClientRectangle, e.Location, Mode, IconSize, Slots.Count, HistoryOpen, HistoryCount);
             int was = down;
             down = -1;
             Invalidate();
             if (hit < 0 || hit != was) return;
+            if (hit == 0) { HistoryOpen = !HistoryOpen; scroll = 0; }
             if (hit == 1 && UndoClicked != null) UndoClicked();
             if (hit == 2 && UnknownClicked != null) UnknownClicked();
-        }
-        SlotView HitIcon(Point point)
-        {
-            Rectangle grid, clues, undo, unknown;
-            ChestFace.Content(ClientRectangle, out grid, out clues, out undo, out unknown);
-            if (!grid.Contains(point)) return null;
-            int icon = IconSize, gap = IconGap, cellW = icon + gap, cellH = icon + 14;
-            int columns = ChestFace.Columns(grid.Width, icon, gap);
-            int x = point.X - grid.X;
-            int y = point.Y - grid.Y + scroll;
-            if (x < 0 || y < 0) return null;
-            int col = x / cellW;
-            int row = y / cellH;
-            if (col >= columns || (x % cellW) >= icon) return null;
-            int iy = y % cellH;
-            if (iy < 12 || iy >= 12 + icon) return null;
-            int index = row * columns + col;
-            if (index < 0 || index >= Slots.Count) return null;
-            return Slots[index];
+            if (hit == 3 && DebugClicked != null) DebugClicked();
+            if (hit == 4 || hit == 5)
+            {
+                Mode = hit == 5 ? "list" : "grid";
+                scroll = 0;
+                if (ModeChanged != null) ModeChanged(Mode);
+            }
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, IconGap, tip, tipAt.X, tipAt.Y);
+            ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged);
         }
     }
 
@@ -145,10 +137,16 @@ namespace Chest
         List<GameWindow> clients = new List<GameWindow>();
         IntPtr selected = IntPtr.Zero;
         uint selectedPid;
+        readonly Panel goldBar = new Panel();
         readonly Panel titleBar = new Panel();
         readonly Label heading = new Label();
+        readonly Label clientLabel = new Label();
+        readonly OpaqueButton settingsButton = new OpaqueButton();
         readonly OpaqueButton collapse = new OpaqueButton();
         readonly OpaqueButton closeButton = new OpaqueButton();
+        SettingsForm settingsForm;
+        SplashForm splashForm;
+        string viewMode = "grid";
         readonly System.Windows.Forms.Timer follow = new System.Windows.Forms.Timer();
         bool refreshing;
         bool resetArmed;
@@ -187,6 +185,7 @@ namespace Chest
             book = new LootBook(dataRoot);
             book.Load();
             LoadPanel();
+            LoadView();
             Text = "Chest";
             try { Icon = AppBranding.LoadIcon(); } catch (Exception) { }
             FormBorderStyle = FormBorderStyle.None;
@@ -194,13 +193,18 @@ namespace Chest
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.None;
             DoubleBuffered = true;
-            BackColor = KavrosTheme.Navy;
+            BackColor = KavrosTheme.Bg;
             ForeColor = KavrosTheme.Text;
             Font = KavrosTheme.Ui(9F, false);
+            Opacity = 0;
             ClientSize = new Size(layout.WindowWidth, collapsed ? 32 : layout.WindowHeight);
+            ChestFace.LoadCrest(Path.Combine(assetPath, "branding", "kavros-crest.png"));
             BuildChrome();
+            chest.Mode = viewMode;
             chest.UndoClicked = delegate { OnUndo(); };
             chest.UnknownClicked = delegate { OpenUnknown(); };
+            chest.DebugClicked = delegate { SaveDebug(); };
+            chest.ModeChanged = delegate(string mode) { viewMode = mode; chest.Mode = mode; SaveView(); };
             stackGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "stack.txt")));
             valueGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "value.txt")));
             icons = IconLibrary.Load(Path.Combine(assetPath, "icons"), Path.Combine(assetPath, "icons", "catalog.txt"));
@@ -212,7 +216,7 @@ namespace Chest
             AppUpdates.Present = delegate(string message, bool error, string action, Action click)
             {
                 status.ForeColor = error ? Color.FromArgb(242, 180, 180) : KavrosTheme.TextSoft;
-                status.Text = message;
+                Say(message);
                 restart.Visible = !string.IsNullOrEmpty(action);
                 restart.Text = action ?? "";
                 restartClick = click;
@@ -226,6 +230,7 @@ namespace Chest
                 watcher.Name = "ChestWatch";
                 watcher.Start();
                 follow.Start();
+                ShowSplash();
                 AppUpdates.Check(this, false);
             };
             FormClosed += delegate
@@ -265,66 +270,97 @@ namespace Chest
 
         void BuildChrome()
         {
-            titleBar.BackColor = KavrosTheme.TitleBar;
+            goldBar.BackColor = KavrosTheme.Gold;
+            Controls.Add(goldBar);
+            titleBar.BackColor = Color.FromArgb(15, 26, 35);
             Controls.Add(titleBar);
             heading.Text = "CHEST";
-            heading.Font = KavrosTheme.Display(13F);
-            heading.ForeColor = KavrosTheme.Gold;
-            heading.BackColor = KavrosTheme.TitleBar;
-            heading.SetBounds(12, 4, 90, 24);
+            heading.Font = KavrosTheme.Display(11F);
+            heading.ForeColor = KavrosTheme.Text;
+            heading.BackColor = titleBar.BackColor;
+            heading.SetBounds(10, 4, 70, 22);
             titleBar.Controls.Add(heading);
-            Label version = new Label();
-            version.Text = AppBranding.DisplayVersion + "  ·  Zenity";
-            version.Font = KavrosTheme.Ui(8F, false);
-            version.ForeColor = KavrosTheme.TextFaint;
-            version.BackColor = KavrosTheme.TitleBar;
-            version.SetBounds(104, 8, 180, 18);
-            titleBar.Controls.Add(version);
+            clientLabel.Text = "|";
+            clientLabel.Font = KavrosTheme.Ui(9F, false);
+            clientLabel.ForeColor = KavrosTheme.TextSoft;
+            clientLabel.BackColor = titleBar.BackColor;
+            clientLabel.AutoEllipsis = true;
+            titleBar.Controls.Add(clientLabel);
             HookDrag(titleBar);
             HookDrag(heading);
-            HookDrag(version);
-            collapse.Text = collapsed ? "+" : "-";
+            HookDrag(clientLabel);
+            settingsButton.Text = "Settings";
+            settingsButton.Font = KavrosTheme.Ui(8F, false);
+            settingsButton.Click += delegate { ShowSettings(); };
+            titleBar.Controls.Add(settingsButton);
+            collapse.Text = collapsed ? "+" : "−";
+            collapse.Font = KavrosTheme.Ui(8F, false);
             collapse.Click += delegate { SetCollapsed(!collapsed); };
             titleBar.Controls.Add(collapse);
-            closeButton.Text = "x";
+            closeButton.Text = "×";
+            closeButton.Font = KavrosTheme.Ui(8F, false);
             closeButton.Click += delegate { Close(); };
             titleBar.Controls.Add(closeButton);
             windows.DropDownStyle = ComboBoxStyle.DropDownList;
             KavrosTheme.StyleCombo(windows);
             windows.SelectedIndexChanged += delegate { if (!refreshing) Attach(); };
-            Controls.Add(windows);
-            OpaqueButton refresh = new OpaqueButton();
-            refresh.Text = "Refresh";
-            refresh.Click += delegate { RefreshWindows(); };
-            Controls.Add(refresh);
-            OpaqueButton capture = new OpaqueButton();
-            capture.Text = "Save capture";
-            capture.Click += delegate { saveRequested = true; status.Text = "Saving a capture of the game window..."; };
-            Controls.Add(capture);
             status.ForeColor = KavrosTheme.TextFaint;
             status.Font = KavrosTheme.Ui(8F, false);
-            status.Text = "Looking for the game window.";
-            Controls.Add(status);
+            Say("Open a clue casket");
             chest.Grid = layout;
+            chest.Mode = viewMode;
             Controls.Add(chest);
-            OpaqueButton reset = new OpaqueButton();
-            reset.Text = "Reset";
-            reset.Click += delegate { OnReset(); };
-            Controls.Add(reset);
-            OpaqueButton updates = new OpaqueButton();
-            updates.Text = "Updates";
-            updates.Click += delegate { AppUpdates.Check(this, true); };
-            Controls.Add(updates);
-            OpaqueButton debug = new OpaqueButton();
-            debug.Text = "Debug";
-            debug.Click += delegate { SaveDebug(); };
-            Controls.Add(debug);
             restart.Text = "Restart";
             restart.Tone = ButtonTone.Primary;
             restart.Visible = false;
+            restart.Font = KavrosTheme.Ui(8F, false);
             restart.Click += delegate { if (restartClick != null) restartClick(); };
-            Controls.Add(restart);
+            titleBar.Controls.Add(restart);
+            settingsForm = new SettingsForm(windows);
+            settingsForm.RefreshClicked = delegate { RefreshWindows(); };
+            settingsForm.ResetClicked = delegate { OnReset(); };
+            settingsForm.SplashClicked = delegate { ShowSplash(); };
+            settingsForm.UpdatesClicked = delegate { AppUpdates.Check(this, true); };
+            settingsForm.OpenPanelClicked = delegate { Opacity = 1; settingsForm.Hide(); };
+            settingsForm.ModeClicked = delegate(string mode) { viewMode = mode; chest.Mode = mode; SaveView(); chest.Invalidate(); };
+            settingsForm.Mode = delegate { return viewMode; };
+            settingsForm.ClientName = delegate { GameWindow window = windows.SelectedItem as GameWindow; return window == null ? "" : window.Display; };
+            settingsForm.Opened = delegate { return book.Caskets; };
+            settingsForm.SessionValue = delegate { return book.Value; };
+            settingsForm.Opens = delegate { return book.Opens; };
             LayoutChrome();
+        }
+
+        void Say(string message)
+        {
+            status.Text = message ?? "";
+            chest.Detail = message;
+            chest.Invalidate();
+            if (settingsForm != null) settingsForm.Invalidate();
+        }
+
+        void ShowSplash()
+        {
+            Opacity = 0;
+            if (splashForm == null || splashForm.IsDisposed) splashForm = new SplashForm();
+            splashForm.OpenClicked = delegate
+            {
+                Opacity = 1;
+                splashForm.Hide();
+                if (settingsForm != null) settingsForm.Hide();
+            };
+            if (!splashForm.Visible) splashForm.Show(this);
+            splashForm.BringToFront();
+        }
+
+        void ShowSettings()
+        {
+            if (settingsForm == null || settingsForm.IsDisposed) return;
+            Opacity = 1;
+            settingsForm.PlaceBeside(this);
+            if (!settingsForm.Visible) settingsForm.Show(this);
+            settingsForm.BringToFront();
+            settingsForm.Invalidate();
         }
 
         void HookDrag(Control control)
@@ -338,43 +374,25 @@ namespace Chest
         {
             int w = ClientSize.Width;
             int h = ClientSize.Height;
-            titleBar.SetBounds(0, 0, w, 32);
-            collapse.SetBounds(w - 64, 4, 28, 24);
-            closeButton.SetBounds(w - 32, 4, 28, 24);
+            int head = collapsed ? h : 30;
+            goldBar.SetBounds(0, 0, w, 2);
+            titleBar.SetBounds(0, 2, w, Math.Max(0, head - 2));
+            closeButton.SetBounds(w - 30, 3, 24, 22);
+            collapse.SetBounds(w - 56, 3, 24, 22);
+            settingsButton.SetBounds(w - 142, 3, 80, 22);
+            restart.SetBounds(w - 210, 3, 64, 22);
+            clientLabel.SetBounds(78, 5, Math.Max(40, w - 300), 20);
             bool body = !collapsed;
-            windows.Visible = body;
-            status.Visible = body;
             chest.Visible = body;
-            foreach (Control control in Controls)
-            {
-                if (control == titleBar) continue;
-                if (!body) control.Visible = false;
-            }
+            goldBar.Visible = true;
             if (!body) return;
-            windows.Visible = true;
-            status.Visible = true;
-            chest.Visible = true;
-            windows.SetBounds(8, 34, Math.Max(120, w - 360), 24);
-            int right = w - 8;
-            foreach (Control control in Controls)
-            {
-                OpaqueButton button = control as OpaqueButton;
-                if (button == null || button == restart || button == collapse || button == closeButton) continue;
-                if (button.Text == "Refresh") { right -= 72; button.SetBounds(right, 34, 68, 24); button.Visible = true; }
-                if (button.Text == "Save capture") { right -= 96; button.SetBounds(right, 34, 92, 24); button.Visible = true; }
-                if (button.Text == "Reset") { right -= 60; button.SetBounds(right, 34, 56, 24); button.Visible = true; }
-                if (button.Text == "Updates") { right -= 72; button.SetBounds(right, 34, 68, 24); button.Visible = true; }
-                if (button.Text == "Debug") { right -= 60; button.SetBounds(right, 34, 56, 24); button.Visible = true; }
-            }
-            restart.SetBounds(8, 34, 72, 24);
-            status.SetBounds(8, 58, w - 16, 16);
-            chest.SetBounds(6, 76, Math.Max(80, w - 12), Math.Max(120, h - 82));
+            chest.SetBounds(0, head, Math.Max(80, w), Math.Max(80, h - head));
         }
 
         void SetCollapsed(bool value)
         {
             collapsed = value;
-            collapse.Text = collapsed ? "+" : "-";
+            collapse.Text = collapsed ? "+" : "−";
             ClientSize = new Size(layout.WindowWidth, collapsed ? 32 : layout.WindowHeight);
             LayoutChrome();
             SavePanel();
@@ -425,20 +443,20 @@ namespace Chest
             {
                 resetArmed = true;
                 resetArmedAt = DateTime.UtcNow;
-                status.Text = "Click Reset again to clear the chest.";
+                Say("Click Reset again to clear the chest.");
                 return;
             }
             resetArmed = false;
             book.Reset();
             RefreshGrid();
-            status.Text = "Chest cleared.";
+            Say("Chest cleared.");
         }
 
         void OnUndo()
         {
             if (book.Last == null)
             {
-                status.Text = "Nothing to undo.";
+                Say("Nothing to undo.");
                 return;
             }
             if (!undoArmed || (DateTime.UtcNow - undoArmedAt).TotalSeconds > 4)
@@ -447,14 +465,14 @@ namespace Chest
                 undoArmedAt = DateTime.UtcNow;
                 chest.UndoArmed = true;
                 chest.Invalidate();
-                status.Text = "Click Undo again to remove the last casket.";
+                Say("Click Undo again to remove the last casket.");
                 return;
             }
             undoArmed = false;
             chest.UndoArmed = false;
             if (!book.UndoLast()) return;
             RefreshGrid();
-            status.Text = "Removed the last casket.";
+            Say("Removed the last casket.");
         }
 
         void OpenUnknown()
@@ -463,12 +481,12 @@ namespace Chest
             {
                 Directory.CreateDirectory(book.UnknownDirectory);
                 Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = "\"" + book.UnknownDirectory + "\"", UseShellExecute = true });
-                status.Text = "Opened the unknown folder.";
+                Say("Opened the unknown folder.");
             }
             catch (Exception ex)
             {
                 CrashLog.Write(ex);
-                status.Text = "Could not open the unknown folder.";
+                Say("Could not open the unknown folder.");
             }
         }
 
@@ -486,11 +504,17 @@ namespace Chest
                 windows.SelectedItem = chosen;
                 selected = chosen.Handle;
                 selectedPid = chosen.ProcessId;
-                status.Text = "Watching " + chosen.Display + ".";
+                clientLabel.Text = "|  " + chosen.Display;
+                Say("Opening " + book.Caskets);
             }
             else if (windows.Items.Count > 0) windows.SelectedIndex = 0;
-            else status.Text = "Looking for the game window.";
+            else
+            {
+                clientLabel.Text = "|";
+                Say("Looking for the game window.");
+            }
             refreshing = false;
+            if (settingsForm != null) settingsForm.Invalidate();
         }
 
         void Attach()
@@ -501,7 +525,8 @@ namespace Chest
             session.MissesBeforeClose = layout.MissesBeforeClose;
             session.Reset();
             clientEpoch++;
-            status.Text = window == null ? "Looking for the game window." : "Watching " + window.Display + ".";
+            clientLabel.Text = window == null ? "|" : "|  " + window.Display;
+            Say(window == null ? "Looking for the game window." : "Opening " + book.Caskets);
         }
 
         void Watch()
@@ -616,7 +641,7 @@ namespace Chest
             if (replace) book.ReplaceLast(lines, shot.Value);
             else book.Commit(lines, shot.Value);
             RefreshGrid();
-            status.Text = (replace ? "Updated the open casket. " : "Logged a casket. ") + lines.Count + " items, value " + Format(shot.Value) + ".";
+            Say(book.Caskets > 0 ? "Opening " + book.Caskets : "Open a clue casket");
         }
 
         int FindLook(byte[] sig)
@@ -650,7 +675,10 @@ namespace Chest
             chest.RewardValue = book.Value;
             chest.Caskets = book.Caskets;
             chest.UndoArmed = undoArmed;
+            chest.Logged = book.Caskets > 0;
+            chest.Opens = book.Opens;
             chest.ShowSlots(slots);
+            if (settingsForm != null) settingsForm.Invalidate();
         }
 
         Bitmap PictureFor(LootLine line)
@@ -733,7 +761,7 @@ namespace Chest
                     }
                 }
                 StringBuilder state = new StringBuilder();
-                state.AppendLine("version " + AppBranding.DisplayVersion);
+                state.AppendLine("version " + AppBranding.FullVersion);
                 state.AppendLine("title " + (title ? "yes" : "no"));
                 state.AppendLine("action " + action);
                 state.AppendLine("reroll " + charges);
@@ -750,13 +778,13 @@ namespace Chest
                 blobs.Add(Encoding.UTF8.GetBytes(DetectionLog.Tail()));
                 string zip = Path.Combine(dir, "chest-debug-" + stamp + ".zip");
                 StoredZip.Create(zip, names, blobs);
-                status.Text = "Saved a debug pack.";
+                Say("Saved a debug pack.");
                 Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = "\"" + dir + "\"", UseShellExecute = true });
             }
             catch (Exception ex)
             {
                 CrashLog.Write(ex);
-                status.Text = "Could not save the debug pack.";
+                Say("Could not save the debug pack.");
             }
         }
 
@@ -766,9 +794,9 @@ namespace Chest
             {
                 string file = Path.Combine(dataRoot, "captures", DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
                 FramePng.Save(frame, file);
-                status.Text = "Saved a capture to " + file;
+                Say("Saved a capture.");
             }
-            catch (Exception ex) { CrashLog.Write(ex); status.Text = "Could not save the capture."; }
+            catch (Exception ex) { CrashLog.Write(ex); Say("Could not save the capture."); }
         }
 
         static string Format(long value)
@@ -820,6 +848,28 @@ namespace Chest
         }
 
         string PanelPath { get { return Path.Combine(dataRoot, "panel.txt"); } }
+        string ViewPath { get { return Path.Combine(dataRoot, "view.txt"); } }
+
+        void LoadView()
+        {
+            try
+            {
+                if (!File.Exists(ViewPath)) return;
+                string mode = File.ReadAllText(ViewPath).Trim();
+                if (mode == "list" || mode == "grid") viewMode = mode;
+            }
+            catch (Exception ex) { CrashLog.Write(ex); }
+        }
+
+        void SaveView()
+        {
+            try
+            {
+                Directory.CreateDirectory(dataRoot);
+                File.WriteAllText(ViewPath, viewMode);
+            }
+            catch (Exception ex) { CrashLog.Write(ex); }
+        }
 
         void LoadPanel()
         {

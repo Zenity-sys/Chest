@@ -1,11 +1,11 @@
 # Chest window layout. Edit these and restart. A mockup can change them without a code change.
 columns=0
 icon=32
-gap=12
+gap=4
 nameHeight=0
 pad=8
-windowWidth=640
-windowHeight=520
+windowWidth=420
+windowHeight=560
 pollMilliseconds=30
 missesBeforeClose=3
 iconMatch=0.94
