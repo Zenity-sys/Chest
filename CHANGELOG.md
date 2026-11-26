@@ -1,3 +1,9 @@
+## 0.6.4
+
+- Tabbing away and back does not count the same reward again, even if one stack digit flickers. One bad frame while the window uncovers is ignored.
+- Grid stack numbers use a small crisp font with a single shadow.
+- The detection log keeps about a minute of reads and records the reward mark on each open and reroll.
+
 ## 0.6.3
 
 - A new casket logs on the first read, so fast clicking is not skipped. A half-drawn reward with the same value updates that casket instead of adding another.

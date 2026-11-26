@@ -48,7 +48,6 @@ namespace Chest
         static readonly Color Well = Color.FromArgb(13, 23, 32);
         static readonly Color RowLine = Color.FromArgb(25, 40, 51);
         static readonly Color Mint = Color.FromArgb(135, 220, 181);
-        static readonly Color Yellow = Color.FromArgb(255, 255, 0);
         static Bitmap crest;
 
         public static void LoadCrest(string path)
@@ -529,18 +528,33 @@ namespace Chest
             g.InterpolationMode = old;
         }
 
+        static Font countFont;
+
+        static Font CountFont()
+        {
+            if (countFont != null) return countFont;
+            try { countFont = new Font("Tahoma", 7.5F, FontStyle.Bold, GraphicsUnit.Point); }
+            catch (Exception) { countFont = null; }
+            if (countFont == null)
+            {
+                try { countFont = new Font("Segoe UI", 7.5F, FontStyle.Bold, GraphicsUnit.Point); }
+                catch (Exception) { countFont = new Font(FontFamily.GenericSansSerif, 7.5F, FontStyle.Bold, GraphicsUnit.Point); }
+            }
+            return countFont;
+        }
+
         static void DrawCount(Graphics g, string text, float x, float y)
         {
-            Font font = KavrosTheme.Ui(8F, true);
+            TextRenderingHint hint = g.TextRenderingHint;
+            g.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
+            Font font = CountFont();
             using (Brush shadow = new SolidBrush(Color.Black))
-            using (Brush yellow = new SolidBrush(Yellow))
+            using (Brush yellow = new SolidBrush(Color.FromArgb(255, 255, 0)))
             {
-                g.DrawString(text, font, shadow, x + 1, y);
-                g.DrawString(text, font, shadow, x - 1, y);
-                g.DrawString(text, font, shadow, x, y + 1);
-                g.DrawString(text, font, shadow, x, y - 1);
+                g.DrawString(text, font, shadow, x + 1, y + 1);
                 g.DrawString(text, font, yellow, x, y);
             }
+            g.TextRenderingHint = hint;
         }
 
         static void DrawScroll(Graphics g, FaceLayout face, int scroll)

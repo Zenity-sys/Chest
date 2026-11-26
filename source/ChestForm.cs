@@ -712,7 +712,9 @@ namespace Chest
                 lastAction = action;
                 lastShot = shot;
             }
-            DetectionLog.Write("title n=" + charges + " value=" + shot.Value + " items=" + shot.Items.Count + " " + action);
+            string detail = "";
+            if (action == "opened" || action == "replaced" || action == "coalesce") detail = " " + shot.Fingerprint;
+            DetectionLog.Write("title n=" + charges + " value=" + shot.Value + " items=" + shot.Items.Count + " " + action + detail);
             if (action == "none" || action == "closed") return;
             string apply = action;
             try { BeginInvoke(new Action(delegate { Apply(shot, apply); })); }

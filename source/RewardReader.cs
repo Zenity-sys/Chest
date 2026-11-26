@@ -461,9 +461,8 @@ namespace Chest
         {
             int r, g, b;
             frame.Get(x, y, out r, out g, out b);
-            // Yellow stack ink, including the paler yellow that sits on a white icon.
-            // White and grey stay out: they are not more yellow than they are blue.
-            return r >= 200 && g >= 155 && b <= 110 && (r - b) >= 120 && g > b + 40;
+            // Only the pure yellow stack digit. Warm parchment must not become part of the number.
+            return r >= 235 && g >= 235 && b <= 40;
         }
         static bool ValueInk(Frame frame, int x, int y)
         {
@@ -632,6 +631,8 @@ namespace Chest
         bool openedInPlace;
         bool rerollPending;
         string logged = "";
+        string returnMark = "";
+        int returnSeen;
 
         int Now()
         {
@@ -653,6 +654,43 @@ namespace Chest
             loggedAt = Now();
             openedInPlace = inPlace;
             rerollPending = false;
+        }
+
+        internal static bool SameReward(string logged, string mark)
+        {
+            int left = MarkValue(logged);
+            int right = MarkValue(mark);
+            if (left <= 0 || left != right) return false;
+            return ItemKeys(logged) == ItemKeys(mark);
+        }
+
+        static string ItemKeys(string mark)
+        {
+            if (string.IsNullOrEmpty(mark)) return "";
+            string[] parts = mark.Split('|');
+            List<string> keys = new List<string>();
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string part = parts[i];
+                int cut = part.LastIndexOf('x');
+                string key = part;
+                if (cut > 0)
+                {
+                    bool digits = cut + 1 < part.Length;
+                    for (int c = cut + 1; c < part.Length && digits; c++)
+                        if (part[c] < '0' || part[c] > '9') digits = false;
+                    if (digits) key = part.Substring(0, cut);
+                }
+                if (key.Length > 0) keys.Add(key);
+            }
+            keys.Sort(StringComparer.Ordinal);
+            StringBuilder built = new StringBuilder();
+            for (int i = 0; i < keys.Count; i++)
+            {
+                if (i > 0) built.Append('|');
+                built.Append(keys[i]);
+            }
+            return built.ToString();
         }
 
         static int MarkValue(string mark)
@@ -722,18 +760,33 @@ namespace Chest
             }
             if (!Open)
             {
-                // Alt-tab, or any gap, must not count the same reward a second time.
-                if (!string.IsNullOrEmpty(logged) && mark == logged)
+                // Same items and value, even if one stack digit flickered.
+                if (SameReward(logged, mark) || (!string.IsNullOrEmpty(logged) && mark == logged))
                 {
                     Open = true;
+                    returnSeen = 0;
+                    returnMark = "";
                     if (charges >= 0) heldCharges = charges;
                     return "none";
+                }
+                // A window uncovering the client can flash one bad frame. Wait for a second read.
+                if (haveClosedAt && !string.IsNullOrEmpty(logged))
+                {
+                    if (mark == returnMark) returnSeen++;
+                    else { returnMark = mark; returnSeen = 1; }
+                    if (returnSeen < 2) return "none";
+                    Open = true;
+                    returnSeen = 0;
+                    returnMark = "";
+                    Remember(charges, mark, false);
+                    return "opened";
                 }
                 Open = true;
                 Remember(charges, mark, false);
                 return "opened";
             }
             if (charges >= 0 && !rerollPending) heldCharges = charges;
+            if (SameReward(logged, mark)) return "none";
             if (mark.Length == 0 || mark == logged) return "none";
             int loggedValue = MarkValue(logged);
             int nextValue = MarkValue(mark);
@@ -760,6 +813,8 @@ namespace Chest
             openedInPlace = false;
             rerollPending = false;
             logged = "";
+            returnMark = "";
+            returnSeen = 0;
         }
     }
 }

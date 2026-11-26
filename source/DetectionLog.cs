@@ -16,7 +16,7 @@ namespace Chest
             lock (gate)
             {
                 lines.Enqueue(row);
-                while (lines.Count > 200) lines.Dequeue();
+                while (lines.Count > 1000) lines.Dequeue();
             }
         }
 
