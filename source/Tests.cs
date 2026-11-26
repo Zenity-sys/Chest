@@ -29,6 +29,7 @@ namespace Chest
             RealRewards(root);
             Pipeline(root);
             Adapt(root);
+            Hold(root);
             Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
             return failed == 0 ? 0 : 1;
         }
@@ -88,9 +89,12 @@ namespace Chest
             Check(open == "opened" && swap == "replaced" && hold == "none" && Count(open, swap, hold) == 1, "a 5 to 4 reroll replaces the same casket");
 
             RewardSession refilled = new RewardSession();
+            int refilledNow = 0;
+            refilled.Clock = delegate { return refilledNow; };
             string low = refilled.See(true, 3, "old");
+            refilledNow = 40;
             refilled.See(false, -1, null);
-            refilled.See(false, -1, null);
+            refilledNow = 560;
             refilled.See(false, -1, null);
             string up = refilled.See(true, 4, "new");
             Check(low == "opened" && up == "opened" && Count(low, up) == 2, "n going from 3 to 4 is a new casket");
@@ -388,7 +392,7 @@ namespace Chest
             string dir = Path.Combine(Path.GetTempPath(), "chest-pipe-" + Guid.NewGuid().ToString("N"));
             LootBook book = new LootBook(dir);
             RewardSession session = new RewardSession();
-            session.MissesBeforeClose = 3;
+            session.MissesBeforeClose = 8;
             System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
             long first = 0;
             for (int i = 0; i < 6; i++)
@@ -403,11 +407,8 @@ namespace Chest
                 RewardShot shot = RewardReader.Read(frame, panel, stack, value);
                 Check(shot.Items.Count > 0, "pipeline reads items in master-" + i + " (" + shot.Items.Count + ")");
                 if (i > 0)
-                {
-                    session.See(false, -1, null);
-                    session.See(false, -1, null);
-                    session.See(false, -1, null);
-                }
+                    for (int miss = 0; miss < session.MissesBeforeClose; miss++)
+                        session.See(false, -1, null);
                 string action = session.See(true, RewardReader.RerollCount(frame, panel), shot.Fingerprint);
                 Check(action == "opened", "pipeline logs master-" + i + " as a new casket (" + action + ")");
                 if (action == "opened")
@@ -669,6 +670,166 @@ namespace Chest
             }
             RewardShot shot = RewardReader.Read(frame, new Rectangle(0, 0, 396, 239), new List<Glyph>(), glyphs);
             return shot.Value;
+        }
+
+        static void Hold(string root)
+        {
+            RewardReader.Use(1440, 96);
+            string mark = "2715|air-talismanx1|air-runex150|off-hand-black-crossbowx1|fire-talismanx1";
+            RewardSession session = new RewardSession();
+            int now = 0;
+            session.Clock = delegate { return now; };
+            int opens = 0;
+            if (session.See(true, 5, mark) == "opened") opens++;
+            if (session.See(true, 5, mark) == "opened") opens++;
+            for (int i = 0; i < 40; i++)
+                if (session.See(true, 5, mark) == "opened") opens++;
+            Check(opens == 1, "an unchanged open casket is counted once (" + opens + ")");
+            now = 50;
+            string blink = session.See(false, -1, null);
+            now = 110;
+            string blinkAgain = session.See(false, -1, null);
+            string back = session.See(true, 5, mark);
+            Check(blink == "none" && blinkAgain == "none" && back == "none", "a 100 ms blink does not count the casket again");
+
+            RewardSession frames = new RewardSession();
+            int frozen = 10;
+            frames.Clock = delegate { return frozen; };
+            frames.See(true, 5, mark);
+            string missed = "none";
+            for (int i = 0; i < 7; i++) missed = frames.See(false, -1, null);
+            Check(missed == "none" && frames.Open, "seven missed frames stay open");
+            missed = frames.See(false, -1, null);
+            Check(missed == "closed" && !frames.Open, "eight missed frames close the window");
+
+            RewardSession closed = new RewardSession();
+            int later = 0;
+            closed.Clock = delegate { return later; };
+            Check(closed.See(true, 5, mark) == "opened", "a casket opens");
+            later = 30;
+            closed.See(false, -1, null);
+            later = 560;
+            string shut = closed.See(false, -1, null);
+            string reopen = closed.See(true, 5, mark);
+            string held = closed.See(true, 5, mark);
+            Check(shut == "closed" && reopen == "opened" && held == "none", "a 500 ms close counts the next open once");
+
+            RewardSession swapped = new RewardSession();
+            string first = swapped.See(true, 5, mark);
+            string half = swapped.See(true, 5, "9000|rune-platebodyx1");
+            string settled = swapped.See(true, 5, "9000|rune-platebodyx1");
+            string stay = swapped.See(true, 5, "9000|rune-platebodyx1");
+            string roll = swapped.See(true, 4, "9000|rune-platebodyx1");
+            string after = swapped.See(true, 4, "9000|rune-platebodyx1");
+            Check(first == "opened" && half == "none" && settled == "opened" && stay == "none" && roll == "replaced" && after == "none", "an in-place casket counts once and a reroll replaces it");
+
+            Check(!CaptureFollow.MissCounts(true, false, true), "a region miss that the full client still shows is not a close");
+            Check(CaptureFollow.MissCounts(true, false, false), "a miss on the full client counts toward a close");
+            Check(!CaptureFollow.MissCounts(false, true, false), "a grab that found the title is not a close");
+
+            List<IconRef> icons = IconLibrary.Load(Path.Combine(root, "assets", "icons"), Path.Combine(root, "assets", "icons", "catalog.txt"));
+            List<Glyph> stack = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "stack.txt"));
+            List<Glyph> value = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "value.txt"));
+            RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
+            Frame shot = FramePng.Decode(Path.Combine(root, "fixtures", "master-1.png"));
+            Frame moved = Shift(shot, 3, 2);
+            Check(shot != null && moved != null, "shifted reward loads");
+            if (shot != null && moved != null)
+            {
+                Rectangle panel = RewardReader.Find(shot);
+                Rectangle movedPanel = RewardReader.Find(moved);
+                RewardShot left = RewardReader.Read(shot, panel, stack, value);
+                RewardShot right = RewardReader.Read(moved, movedPanel, stack, value);
+                Name(icons, left);
+                Name(icons, right);
+                string leftMark = RewardReader.Semantic(left.Value, left.Items);
+                string rightMark = RewardReader.Semantic(right.Value, right.Items);
+                bool movedPixels = left.Items.Count > 0 && right.Items.Count > 0 && left.Items[0].X != right.Items[0].X;
+                Check(left.Items.Count == right.Items.Count && leftMark == rightMark && movedPixels, "a shifted grab keeps the same casket (" + leftMark + " / " + rightMark + ")");
+                RewardSession live = new RewardSession();
+                string opened = live.See(true, 5, leftMark);
+                string again = live.See(true, 5, rightMark);
+                Check(opened == "opened" && again == "none", "a shifted grab does not count the casket again");
+            }
+
+            Check(StackOnRune(root, stack) == 150, "150 on an air rune reads 150 (" + StackOnRune(root, stack) + ")");
+        }
+
+        static void Name(List<IconRef> icons, RewardShot shot)
+        {
+            foreach (SeenItem item in shot.Items)
+            {
+                IconHit hit = IconLibrary.Match(icons, item.Bgra, item.Width, item.Height, 0.90);
+                if (!hit.Known) continue;
+                item.Named = true;
+                item.Name = hit.Name;
+                item.Key = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
+            }
+        }
+
+        static Frame Shift(Frame src, int dx, int dy)
+        {
+            if (src == null) return null;
+            int width = src.Width + dx, height = src.Height + dy;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 14; data[i + 1] = 22; data[i + 2] = 16; data[i + 3] = 255; }
+            for (int y = 0; y < src.Height; y++)
+                Buffer.BlockCopy(src.Bgra, y * src.Width * 4, data, ((y + dy) * width + dx) * 4, src.Width * 4);
+            return new Frame(data, width, height);
+        }
+
+        static int StackOnRune(string root, List<Glyph> glyphs)
+        {
+            Frame rune = FramePng.Decode(Path.Combine(root, "assets", "icons", "air-rune.png"));
+            if (rune == null || glyphs == null) return -1;
+            int width = 72, height = 52, ox = 8, oy = 10;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 18; data[i + 1] = 28; data[i + 2] = 36; data[i + 3] = 255; }
+            for (int y = 0; y < rune.Height; y++)
+                for (int x = 0; x < rune.Width; x++)
+                {
+                    int from = (y * rune.Width + x) * 4;
+                    if (rune.Bgra[from + 3] < 16) continue;
+                    int to = ((oy + y) * width + (ox + x)) * 4;
+                    data[to] = rune.Bgra[from];
+                    data[to + 1] = rune.Bgra[from + 1];
+                    data[to + 2] = rune.Bgra[from + 2];
+                    data[to + 3] = 255;
+                }
+            int penX = ox;
+            string number = "150";
+            foreach (char digit in number)
+            {
+                Glyph glyph = null;
+                foreach (Glyph candidate in glyphs) if (candidate.Value == digit) glyph = candidate;
+                if (glyph == null) return -1;
+                for (int y = 0; y < glyph.Height; y++)
+                    for (int x = 0; x < glyph.Width; x++)
+                    {
+                        if (!glyph.On[y * glyph.Width + x]) continue;
+                        Paint(data, width, height, penX + x + 1, oy + y + 1, 16, 12, 12);
+                        Paint(data, width, height, penX + x, oy + y, 52, 187, 250);
+                    }
+                penX += glyph.Width + 1;
+            }
+            Frame frame = new Frame(data, width, height);
+            try { FramePng.Save(frame, "/opt/cursor/artifacts/air-rune-150.png"); } catch (Exception) { }
+            SeenItem item = new SeenItem();
+            item.X = ox;
+            item.Y = oy;
+            item.Width = rune.Width;
+            item.Height = rune.Height;
+            return RewardReader.ReadStack(frame, item, glyphs);
+        }
+
+        static void Paint(byte[] data, int width, int height, int x, int y, byte b, byte g, byte r)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height) return;
+            int i = (y * width + x) * 4;
+            data[i] = b;
+            data[i + 1] = g;
+            data[i + 2] = r;
+            data[i + 3] = 255;
         }
 
         static string FindRoot()

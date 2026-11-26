@@ -7,5 +7,5 @@ pad=8
 windowWidth=420
 windowHeight=560
 pollMilliseconds=30
-missesBeforeClose=3
+missesBeforeClose=8
 iconMatch=0.90

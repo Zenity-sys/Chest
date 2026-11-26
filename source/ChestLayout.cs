@@ -17,7 +17,7 @@ namespace Chest
         public int WindowWidth = 880;
         public int WindowHeight = 720;
         public int PollMilliseconds = 70;
-        public int MissesBeforeClose = 3;
+        public int MissesBeforeClose = 8;
         public double IconMatch = 0.94;
 
         public static ChestLayout Load(string path)

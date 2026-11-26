@@ -1,3 +1,9 @@
+## 0.6.1
+
+- An open casket is counted once. The same items, quantities, and value are ignored when the picture shifts.
+- A short blink of the reward window does not start a new casket. A padded grab that misses the title checks the whole client before calling it closed.
+- Yellow stack numbers on bright icons read the full count, including 150.
+
 ## 0.6.0
 
 - Fallen stars, prismatic stars, XP lamps, prismatic lamps, crossbows, salvage, seeds, and other common casket drops have clean sprites.

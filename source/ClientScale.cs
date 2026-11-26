@@ -122,6 +122,15 @@ namespace Chest
             misses++;
             if (misses >= MissesBeforeFull) { misses = 0; wide = true; }
         }
+
+        // A padded grab can miss the title while the reward is still on screen.
+        // That miss does not count until the full client is checked and also misses.
+        public static bool MissCounts(bool narrowed, bool foundInGrab, bool foundFull)
+        {
+            if (foundInGrab) return false;
+            if (narrowed && foundFull) return false;
+            return true;
+        }
     }
 
     // Another Kavros client in front hides this panel. Our own client does not.

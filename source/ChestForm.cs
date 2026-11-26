@@ -635,19 +635,32 @@ namespace Chest
             if (Native.IsIconic(handle)) return;
             Rectangle bounds = Native.ClientBounds(handle);
             RewardReader.Use(bounds.Height, Native.Dpi(handle));
+            Rectangle full = new Rectangle(0, 0, bounds.Width, bounds.Height);
             Rectangle roi = region.Choose(bounds.Size, trackedPanel);
-            Rectangle grab = roi;
-            grab.Offset(bounds.Location);
-            Rectangle visible = Rectangle.Intersect(grab, Native.VirtualScreen());
-            if (visible.Width < 80 || visible.Height < 80) return;
-            Frame frame = ScreenCapture.Grab(visible);
+            bool narrowed = roi.Width + 8 < bounds.Width || roi.Height + 8 < bounds.Height;
+            Rectangle visible;
+            Frame frame = Grab(bounds, roi, out visible);
             if (frame == null) return;
-            Rectangle mine = overlayScreen;
-            if (mine.Width > 0)
+            Rectangle local = RewardReader.Find(frame);
+            bool titled = !local.IsEmpty && RewardReader.TitleMatches(frame, local);
+            if (!titled && narrowed)
             {
-                Rectangle cover = mine;
-                cover.Offset(-visible.X, -visible.Y);
-                frame.Cover(cover);
+                Rectangle wideVisible;
+                Frame wide = Grab(bounds, full, out wideVisible);
+                if (wide != null)
+                {
+                    bool wideTitle = false;
+                    Rectangle wideLocal = RewardReader.Find(wide);
+                    wideTitle = !wideLocal.IsEmpty && RewardReader.TitleMatches(wide, wideLocal);
+                    if (wideTitle)
+                    {
+                        frame = wide;
+                        visible = wideVisible;
+                        local = wideLocal;
+                        titled = true;
+                        DetectionLog.Write("region missed title, full client found");
+                    }
+                }
             }
             if (saveRequested)
             {
@@ -656,8 +669,6 @@ namespace Chest
                 try { BeginInvoke(new Action(delegate { SaveCapture(copy); })); }
                 catch (InvalidOperationException) { }
             }
-            Rectangle local = RewardReader.Find(frame);
-            bool titled = !local.IsEmpty && RewardReader.TitleMatches(frame, local);
             if (!titled)
             {
                 region.Note(false);
@@ -675,6 +686,8 @@ namespace Chest
                 return;
             }
             int charges = RewardReader.RerollCount(frame, local);
+            foreach (SeenItem seen in shot.Items) Identify(seen);
+            shot.Fingerprint = RewardReader.Semantic(shot.Value, shot.Items);
             string action = session.See(true, charges, shot.Fingerprint);
             lock (grabLock)
             {
@@ -692,6 +705,50 @@ namespace Chest
             catch (InvalidOperationException) { }
         }
 
+        Frame Grab(Rectangle bounds, Rectangle clientRoi, out Rectangle visible)
+        {
+            visible = Rectangle.Empty;
+            Rectangle grab = clientRoi;
+            grab.Offset(bounds.Location);
+            visible = Rectangle.Intersect(grab, Native.VirtualScreen());
+            if (visible.Width < 80 || visible.Height < 80) return null;
+            Frame frame = ScreenCapture.Grab(visible);
+            if (frame == null) return null;
+            Rectangle mine = overlayScreen;
+            if (mine.Width > 0)
+            {
+                Rectangle cover = mine;
+                cover.Offset(-visible.X, -visible.Y);
+                frame.Cover(cover);
+            }
+            return frame;
+        }
+
+        void Identify(SeenItem item)
+        {
+            if (item == null || item.Bgra == null) return;
+            IconHit hit = IconLibrary.Match(icons, item.Bgra, item.Width, item.Height, layout.IconMatch);
+            if (hit.Known)
+            {
+                item.Named = true;
+                item.Name = hit.Name;
+                item.Key = string.IsNullOrEmpty(hit.Group) ? IconLibrary.Slug(hit.Name) : hit.Group;
+                return;
+            }
+            item.Named = false;
+            item.Name = "";
+            item.Key = LookKey(item.Bgra, item.Width, item.Height);
+        }
+
+        static string LookKey(byte[] bgra, int width, int height)
+        {
+            byte[] sig = IconLibrary.Signature(bgra, width, height);
+            char[] hex = "0123456789abcdef".ToCharArray();
+            char[] text = new char[sig.Length];
+            for (int i = 0; i < sig.Length; i++) text[i] = hex[(sig[i] / 32) & 15];
+            return "look-" + new string(text);
+        }
+
         void Apply(RewardShot shot, bool replace)
         {
             if (IsDisposed || shot == null) return;
@@ -702,11 +759,16 @@ namespace Chest
                 byte[] pixels = item.Bgra;
                 int pw = item.Width, ph = item.Height;
                 byte[] cleaned = Noted.CleanForDisplay(pixels, pw, ph);
-                IconHit hit = IconLibrary.Match(icons, pixels, pw, ph, layout.IconMatch);
+                IconHit hit = item.Named ? null : IconLibrary.Match(icons, pixels, pw, ph, layout.IconMatch);
                 byte[] sig = IconLibrary.Signature(cleaned, pw, ph);
                 line.Quantity = item.Quantity;
                 int knownLook = FindLook(sig);
-                if (hit.Known)
+                if (item.Named)
+                {
+                    line.Id = item.Key;
+                    line.Name = item.Name;
+                }
+                else if (hit != null && hit.Known)
                 {
                     line.Id = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
                     line.Name = hit.Name;
