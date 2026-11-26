@@ -714,8 +714,8 @@ namespace Chest
             }
             DetectionLog.Write("title n=" + charges + " value=" + shot.Value + " items=" + shot.Items.Count + " " + action);
             if (action == "none" || action == "closed") return;
-            bool replace = action == "replaced";
-            try { BeginInvoke(new Action(delegate { Apply(shot, replace); })); }
+            string apply = action;
+            try { BeginInvoke(new Action(delegate { Apply(shot, apply); })); }
             catch (InvalidOperationException) { }
         }
 
@@ -763,7 +763,7 @@ namespace Chest
             return "look-" + new string(text);
         }
 
-        void Apply(RewardShot shot, bool replace)
+        void Apply(RewardShot shot, string action)
         {
             if (IsDisposed || shot == null) return;
             List<LootLine> lines = new List<LootLine>();
@@ -808,7 +808,8 @@ namespace Chest
                 RememberLook(line.Id, line.Name, sig);
                 lines.Add(line);
             }
-            if (replace) book.ReplaceLast(lines, shot.Value);
+            if (action == "coalesce") book.Coalesce(lines, shot.Value);
+            else if (action == "replaced") book.ReplaceLast(lines, shot.Value);
             else book.Commit(lines, shot.Value);
             RefreshGrid();
             Say(book.Caskets > 0 ? "Opening " + book.Caskets : "Open a clue casket");

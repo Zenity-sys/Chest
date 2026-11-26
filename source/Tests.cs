@@ -59,35 +59,17 @@ namespace Chest
             int repeats = 0;
             for (int i = 0; i < 100; i++)
                 if (held.See(true, 5, "same-frame") == "opened") repeats++;
-            Check(repeats == 1 && held.See(true, 5, "jitter-" + repeats) == "none", "the same open window logged 100 times is one casket");
+            Check(repeats == 1, "the same open window logged 100 times is one casket");
 
             RewardSession inplace = new RewardSession();
-            int place = 0;
-            inplace.Clock = delegate { return place; };
             string stay = inplace.See(true, 5, "casket-a");
             string againSame = inplace.See(true, 5, "casket-a");
-            place = 10;
             string half = inplace.See(true, 5, "casket-b-partial");
-            place = 20;
             string next = inplace.See(true, 5, "casket-b");
-            place = 30;
-            string early = inplace.See(true, 5, "casket-b");
-            place = 230;
-            string armed = inplace.See(true, 5, "casket-b");
-            place = 240;
-            string settled = inplace.See(true, 5, "casket-b");
-            place = 250;
             string heldOpen = inplace.See(true, 5, "casket-b");
-            Check(stay == "opened" && againSame == "none" && half == "none" && next == "none" && early == "none" && armed == "none" && settled == "opened" && heldOpen == "none", "an in-place casket counts once the new read settles");
-            place = 300;
+            Check(stay == "opened" && againSame == "none" && half == "opened" && next == "opened" && heldOpen == "none", "an in-place casket counts on the first read");
             string raised = inplace.See(true, 6, "casket-c");
-            place = 310;
-            string raisedMid = inplace.See(true, 6, "casket-c");
-            place = 520;
-            string raisedArmed = inplace.See(true, 6, "casket-c");
-            place = 530;
-            string raisedAgain = inplace.See(true, 6, "casket-c");
-            Check(raised == "none" && raisedMid == "none" && raisedArmed == "none" && raisedAgain == "opened", "n going up on the same window is a new casket");
+            Check(raised == "opened", "n going up on the same window is a new casket");
             string reroll = inplace.See(true, 5, "casket-c-reroll");
             Check(reroll == "replaced", "n dropping by one on the same window is still a reroll");
 
@@ -751,39 +733,57 @@ namespace Chest
             Check(gapOpen == "opened" && gapShut == "closed" && gapBack == "replaced", "a reroll after a 600 ms blink replaces the casket");
 
             RewardSession earlyRoll = new RewardSession();
-            string rollOpen = earlyRoll.See(true, 5, "loot");
-            string rollHalf = earlyRoll.See(true, 5, "loot-new");
-            string rollDrop = earlyRoll.See(true, 4, "loot-new");
-            string rollHold = earlyRoll.See(true, 4, "loot-new");
-            Check(rollOpen == "opened" && rollHalf == "none" && rollDrop == "replaced" && rollHold == "none", "items that change before n drops still replace the casket");
+            int earlyNow = 0;
+            earlyRoll.Clock = delegate { return earlyNow; };
+            string rollOpen = earlyRoll.See(true, 5, "1000|oldx1");
+            earlyNow = 40;
+            string rollNew = earlyRoll.See(true, 5, "400|newx1");
+            earlyNow = 80;
+            string rollDrop = earlyRoll.See(true, 4, "400|newx1");
+            Check(rollOpen == "opened" && rollNew == "opened" && rollDrop == "coalesce", "new items before n drops become one reroll");
+
+            RewardSession lateRoll = new RewardSession();
+            int lateNow = 0;
+            lateRoll.Clock = delegate { return lateNow; };
+            string lateOpen = lateRoll.See(true, 5, "1000|oldx1");
+            lateNow = 40;
+            string lateDrop = lateRoll.See(true, 4, "1000|oldx1");
+            lateNow = 90;
+            string lateItems = lateRoll.See(true, 4, "400|newx1");
+            Check(lateOpen == "opened" && lateDrop == "none" && lateItems == "replaced", "n dropping before the new items still replaces the casket");
+            Check(RerollBook("case-a"), "reroll case A removes the old loot");
+            Check(RerollBook("case-b"), "reroll case B removes the old loot");
+            Check(RerollBook("spent"), "reroll 1 to 0 removes the old loot");
+
+            RewardSession spam = new RewardSession();
+            int spamNow = 0;
+            spam.Clock = delegate { return spamNow; };
+            int spamOpens = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                spamNow += 130;
+                if (spam.See(true, 5, (1000 + i).ToString() + "|itemx1") == "opened") spamOpens++;
+            }
+            Check(spamOpens == 10, "ten fast caskets all log (" + spamOpens + ")");
+
+            RewardSession partial = new RewardSession();
+            int partNow = 0;
+            partial.Clock = delegate { return partNow; };
+            string partA = partial.See(true, 5, "9560|ax1|bx1|cx1");
+            partNow = 100;
+            string partB = partial.See(true, 5, "9560|ax1|bx1|cx1|dx1");
+            string partC = partial.See(true, 5, "9560|ax1|bx1|cx1|dx1");
+            Check(partA == "opened" && partB == "replaced" && partC == "none", "a same-value partial draw updates the casket");
 
             RewardSession sameN = new RewardSession();
-            int sameNow = 0;
-            sameN.Clock = delegate { return sameNow; };
-            string sameOpen = sameN.See(true, 5, "first");
-            sameNow = 10;
-            sameN.See(true, 5, "second");
-            sameNow = 20;
-            sameN.See(true, 5, "second");
-            sameNow = 230;
-            sameN.See(true, 5, "second");
-            sameNow = 240;
-            string sameSettled = sameN.See(true, 5, "second");
-            string sameStay = sameN.See(true, 5, "second");
-            Check(sameOpen == "opened" && sameSettled == "opened" && sameStay == "none", "the same reroll number with new items is a new casket");
+            string sameOpen = sameN.See(true, 5, "1000|firstx1");
+            string sameSettled = sameN.See(true, 5, "2000|secondx1");
+            string sameStay = sameN.See(true, 5, "2000|secondx1");
+            Check(sameOpen == "opened" && sameSettled == "opened" && sameStay == "none", "a different value is a new casket immediately");
 
             RewardSession higher = new RewardSession();
-            int highNow = 0;
-            higher.Clock = delegate { return highNow; };
-            string highOpen = higher.See(true, 4, "low");
-            highNow = 10;
-            higher.See(true, 5, "high");
-            highNow = 20;
-            higher.See(true, 5, "high");
-            highNow = 230;
-            higher.See(true, 5, "high");
-            highNow = 240;
-            string highSettled = higher.See(true, 5, "high");
+            string highOpen = higher.See(true, 4, "1000|lowx1");
+            string highSettled = higher.See(true, 5, "2000|highx1");
             Check(highOpen == "opened" && highSettled == "opened", "n going up is a new casket");
 
             Check(!CaptureFollow.MissCounts(true, false, true), "a region miss that the full client still shows is not a close");
@@ -854,6 +854,55 @@ namespace Chest
             Check(GreyReroll() == 0, "a greyed-out REROLL REWARD reads 0 (" + GreyReroll() + ")");
             Check(StackOnRune(root, stack) == 150, "150 on an air rune reads 150 (" + StackOnRune(root, stack) + ")");
             Check(LawRuneTwenty(stack) == 20, "20 on a law rune reads 20 (" + LawRuneTwenty(stack) + ")");
+        }
+
+        static bool RerollBook(string kind)
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "chest-" + kind + "-" + Guid.NewGuid().ToString("N"));
+            LootBook book = new LootBook(dir);
+            RewardSession session = new RewardSession();
+            int now = 0;
+            session.Clock = delegate { return now; };
+            int start = kind == "spent" ? 1 : 5;
+            int dropped = start - 1;
+            ApplyLoot(book, session.See(true, start, "9000|oldx1"), "old", 1, 9000);
+            now = 40;
+            if (kind == "case-b")
+            {
+                string appeared = session.See(true, start, "400|newx2");
+                if (appeared != "opened") { try { Directory.Delete(dir, true); } catch (Exception) { } return false; }
+                ApplyLoot(book, appeared, "new", 2, 400);
+            }
+            now = 80;
+            string drop = session.See(true, dropped, kind == "case-b" ? "400|newx2" : "9000|oldx1");
+            string wantDrop = kind == "case-b" ? "coalesce" : "none";
+            if (drop != wantDrop) { try { Directory.Delete(dir, true); } catch (Exception) { } return false; }
+            if (kind == "case-b") ApplyLoot(book, drop, "new", 2, 400);
+            else
+            {
+                now = 130;
+                string done = session.See(true, dropped, "400|newx2");
+                if (done != "replaced") { try { Directory.Delete(dir, true); } catch (Exception) { } return false; }
+                ApplyLoot(book, done, "new", 2, 400);
+            }
+            bool oldGone = true, kept = false;
+            foreach (LootLine line in book.Lines)
+            {
+                if (line.Id == "old" && line.Quantity > 0) oldGone = false;
+                if (line.Id == "new" && line.Quantity == 2) kept = true;
+            }
+            bool ok = book.Caskets == 1 && book.Value == 400 && book.Opens.Count == 1 && oldGone && kept;
+            try { Directory.Delete(dir, true); } catch (Exception) { }
+            return ok;
+        }
+
+        static void ApplyLoot(LootBook book, string action, string id, int qty, long value)
+        {
+            if (action == "none" || action == "closed" || string.IsNullOrEmpty(action)) return;
+            LootLine[] lines = new LootLine[] { new LootLine { Id = id, Name = id, Quantity = qty } };
+            if (action == "coalesce") book.Coalesce(lines, value);
+            else if (action == "replaced") book.ReplaceLast(lines, value);
+            else book.Commit(lines, value);
         }
 
         static void Name(List<IconRef> icons, RewardShot shot)

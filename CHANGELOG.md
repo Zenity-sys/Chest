@@ -1,3 +1,9 @@
+## 0.6.3
+
+- A new casket logs on the first read, so fast clicking is not skipped. A half-drawn reward with the same value updates that casket instead of adding another.
+- A reroll removes the previous items and value whether the button changes first or the new items appear first. A grey REROLL REWARD still counts as 0.
+- Settings text has room to draw, and the title is not cut off at the top.
+
 ## 0.6.2
 
 - Coming back to the same reward, even after an alt-tab, does not count it again. Reset and Undo clear that memory.
