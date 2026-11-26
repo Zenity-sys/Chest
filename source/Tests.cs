@@ -873,7 +873,7 @@ namespace Chest
             bool chainOk = chainOpen == "opened";
             for (int n = 4; n >= 0 && chainOk; n--)
                 chainOk = chain.See(true, n, "c" + n) == "replaced";
-            Check(chainOk, "every reroll from 5 down to 0 replaces the last casket");
+            Check(chainOk && RerollChainBook(), "every reroll from 5 down to 0 replaces the last casket");
 
             string spentDir = Path.Combine(Path.GetTempPath(), "chest-reroll-" + Guid.NewGuid().ToString("N"));
             LootBook spent = new LootBook(spentDir);
@@ -893,6 +893,12 @@ namespace Chest
             Check(GreyReroll() == 0, "a greyed-out REROLL REWARD reads 0 (" + GreyReroll() + ")");
             Check(ChargeButton(1, 0) == 1, "REROLL REWARD (1) reads 1 (" + ChargeButton(1, 0) + ")");
             Check(ChargeButton(2, 0) == 2 && ChargeButton(3, 0) == 3 && ChargeButton(4, 0) == 4 && ChargeButton(5, 0) == 5, "reroll digits 2 through 5 read cleanly");
+            string[] twoA = new string[] { ".##.", "#..#", "...#", "..#.", ".#..", "#...", "##..", "####" };
+            string[] twoB = new string[] { "###.", "..#.", "..#.", ".#..", "#...", "#...", "#..#", "####" };
+            string[] twoC = new string[] { "####.", "...#.", "...#.", "..#..", ".#...", "#....", "#....", "#...#", "#####" };
+            string[] twoD = new string[] { ".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#....", "#...#", "#####" };
+            Check(ChargeRows(twoA, 0) == 2 && ChargeRows(twoB, 0) == 2 && ChargeRows(twoC, 1) == 2 && ChargeRows(twoD, -1) == 2, "every serif 2 inside the parenthesis reads 2");
+            Check(ChargeButton(1, 0) != 2 && ChargeButton(3, 0) != 2 && ChargeButton(4, 0) != 2 && ChargeButton(5, 0) != 2 && GreyReroll() != 2, "1, 3, 4, 5 and 0 are not read as 2");
             Check(ChargeButton(1, 1) == 1 && ChargeButton(2, -1) == 2 && ChargeButton(5, 1) == 5, "a reroll digit shifted by one pixel still reads");
             RewardSession stale = new RewardSession();
             string staleA = stale.See(true, 4, "100|a");
@@ -1020,12 +1026,48 @@ namespace Chest
             return RewardReader.ReadStack(frame, item, glyphs);
         }
 
+        static bool RerollChainBook()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "chest-chain-" + Guid.NewGuid().ToString("N"));
+            LootBook book = new LootBook(dir);
+            RewardSession session = new RewardSession();
+            ApplyLoot(book, session.See(true, 5, "500|c5x1"), "c5", 1, 500);
+            bool ok = book.Caskets == 1;
+            for (int n = 4; n >= 0 && ok; n--)
+            {
+                string action = session.See(true, n, (400 + n).ToString() + "|c" + n + "x1");
+                if (action != "replaced") ok = false;
+                else ApplyLoot(book, action, "c" + n, 1, 400 + n);
+            }
+            if (book.Caskets != 1 || book.Lines.Count != 1) ok = false;
+            try { Directory.Delete(dir, true); } catch (Exception) { }
+            return ok;
+        }
+
+        static int ChargeRows(string[] shape, int shift)
+        {
+            int width = 396, height = 239;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 80; data[i + 1] = 190; data[i + 2] = 230; data[i + 3] = 255; }
+            for (int y = 200; y <= 216; y++)
+            {
+                Paint(data, width, height, 250, y, 0, 0, 0);
+                Paint(data, width, height, 263, y, 0, 0, 0);
+                Paint(data, width, height, 264, y, 0, 0, 0);
+            }
+            int ox = 256 + shift, oy = 203;
+            for (int y = 0; y < shape.Length; y++)
+                for (int x = 0; x < shape[y].Length; x++)
+                    if (shape[y][x] == '#') Paint(data, width, height, ox + x, oy + y, 0, 0, 0);
+            return RewardReader.RerollCount(new Frame(data, width, height), new Rectangle(0, 0, width, height));
+        }
+
         static int ChargeButton(int digit, int shift)
         {
             string[] shape = digit == 1
                 ? new string[] { "..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".##..", ".##..", ".##.." }
                 : digit == 2
-                    ? new string[] { ".##..", "#..#.", "#..#.", "...#.", "..#..", ".#...", "#....", "#...#", "#####" }
+                    ? new string[] { ".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#....", "#...#", "#####" }
                     : digit == 3
                         ? new string[] { "###..", "...#.", "...#.", ".....", "..##.", "...##", "...##", "...#.", "###.." }
                         : digit == 4

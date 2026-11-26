@@ -1,3 +1,7 @@
+## 0.6.6
+
+- REROLL REWARD (2) reads as 2. A wide digit with a flat base is a 2 when 1, 3, 4 and 5 do not match.
+
 ## 0.6.5
 
 - REROLL REWARD (1) and (2) read as 1 and 2. A new casket clears a reroll count that could not be read, so a later casket is not treated as a reroll.

@@ -524,6 +524,8 @@ namespace Chest
             if (paren < 0) return SpentReroll(frame, panel) ? 0 : -1;
             int best = -1;
             double bestRatio = 0;
+            double others = 0;
+            double two = 0;
             int[] shifts = new int[] { -2, -1, 0, 1, 2 };
             int[] vshifts = new int[] { -1, 0, 1 };
             for (int digit = 0; digit < ChargeShapes.Length; digit++)
@@ -544,10 +546,63 @@ namespace Chest
                             bestRatio = ratio;
                             best = digit;
                         }
+                        if (digit == 2)
+                        {
+                            if (ratio > two) two = ratio;
+                        }
+                        else if ((digit == 1 || digit == 3 || digit == 4 || digit == 5) && ratio > others) others = ratio;
                     }
             }
-            if (bestRatio < 0.82) return -1;
-            return best;
+            if (best == 1 || best == 3 || best == 4 || best == 5 || best == 0)
+            {
+                if (bestRatio >= 0.82) return best;
+            }
+            else if (best == 2 && bestRatio >= 0.82) return 2;
+            // (2) is the only count whose serif varies. A wide digit with a flat base is a 2
+            // when 1, 3, 4 and 5 did not match.
+            if (paren >= 0 && others < 0.78 && (two >= 0.65 || LooksLikeTwo(frame, panel, paren, hover))) return 2;
+            return -1;
+        }
+
+        static bool LooksLikeTwo(Frame frame, Rectangle panel, int paren, bool hover)
+        {
+            int leftParen = -1;
+            int from = paren - Px(16);
+            int to = paren - Px(8);
+            for (int x = from; x <= to; x++)
+            {
+                int ink = 0;
+                for (int y = panel.Y + Px(200); y < panel.Y + Px(216); y++)
+                    if (ButtonInk(frame, x, y, hover)) ink++;
+                if (ink >= Px(6)) leftParen = x;
+            }
+            if (leftParen < 0) return false;
+            int x0 = leftParen + Px(1);
+            int x1 = paren - Px(1);
+            int y0 = panel.Y + Px(202);
+            int y1 = panel.Y + Px(212);
+            if (x1 < x0) return false;
+            int inkPixels = 0;
+            int minX = 99999, maxX = -1, minY = 99999, maxY = -1;
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    if (!ButtonInk(frame, x, y, hover)) continue;
+                    inkPixels++;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            if (inkPixels == 0 || maxY < 0) return false;
+            int inkWidth = maxX - minX + 1;
+            int bottomInk = 0;
+            int bottom = maxY - Px(1);
+            if (bottom < minY) bottom = minY;
+            for (int y = bottom; y <= maxY; y++)
+                for (int x = x0; x <= x1; x++)
+                    if (ButtonInk(frame, x, y, hover)) bottomInk++;
+            return inkWidth >= Px(4) && inkWidth <= Px(7) && inkPixels >= Px(9) && inkPixels <= Px(28) && bottomInk >= Px(3);
         }
 
         // Ink overlap, not background dots. A skinny 1 must not win just because most cells are empty.
@@ -630,7 +685,7 @@ namespace Chest
         static readonly string[][] ChargeShapes = new string[][] {
             new string[] { ".##..", "#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".##.." },
             new string[] { "..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".##..", ".##..", ".##.." },
-            new string[] { ".##..", "#..#.", "#..#.", "...#.", "..#..", ".#...", "#....", "#...#", "#####" },
+            new string[] { ".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#....", "#...#", "#####" },
             new string[] { "###..", "...#.", "...#.", ".....", "..##.", "...##", "...##", "...#.", "###.." },
             new string[] { "..#..", "..#..", ".##..", "..#..", "..#..", "..#..", "####.", "..#..", ".##.." },
             new string[] { "####.", "#....", "#....", ".##..", "..##.", "...#.", "...#.", "...#.", "##..." }
