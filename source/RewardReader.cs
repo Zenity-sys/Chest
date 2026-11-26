@@ -524,31 +524,59 @@ namespace Chest
             if (paren < 0) return SpentReroll(frame, panel) ? 0 : -1;
             int best = -1;
             double bestRatio = 0;
+            int[] shifts = new int[] { -2, -1, 0, 1, 2 };
+            int[] vshifts = new int[] { -1, 0, 1 };
             for (int digit = 0; digit < ChargeShapes.Length; digit++)
             {
-                int score = 0;
-                int compared = 0;
                 string[] rows = ChargeShapes[digit];
-                for (int y = 0; y < rows.Length; y++)
-                {
-                    string row = rows[y];
-                    for (int x = 0; x < row.Length; x++)
+                for (int si = 0; si < shifts.Length; si++)
+                    for (int vi = 0; vi < vshifts.Length; vi++)
                     {
-                        bool on = ButtonInk(frame, paren - Px(8) + Px(x), panel.Y + Px(203 + y), hover);
-                        bool want = row[x] == '#';
-                        if (on == want) score++;
-                        compared++;
+                        int inkWidth;
+                        double ratio = ScoreCharge(frame, paren - Px(8) + Px(shifts[si]), panel.Y + Px(203) + Px(vshifts[vi]), rows, hover, out inkWidth);
+                        if (digit == 1)
+                        {
+                            if (inkWidth < 1 || inkWidth > 3) continue;
+                        }
+                        else if (inkWidth < 4) continue;
+                        if (ratio > bestRatio)
+                        {
+                            bestRatio = ratio;
+                            best = digit;
+                        }
                     }
-                }
-                double ratio = compared == 0 ? 0 : score / (double)compared;
-                if (ratio > bestRatio)
-                {
-                    bestRatio = ratio;
-                    best = digit;
-                }
             }
             if (bestRatio < 0.82) return -1;
             return best;
+        }
+
+        // Ink overlap, not background dots. A skinny 1 must not win just because most cells are empty.
+        static double ScoreCharge(Frame frame, int originX, int originY, string[] rows, bool hover, out int inkWidth)
+        {
+            int tp = 0, fp = 0, fn = 0, hit = 0, total = 0;
+            int minC = 99, maxC = -1;
+            for (int y = 0; y < rows.Length; y++)
+            {
+                string row = rows[y];
+                for (int x = 0; x < row.Length; x++)
+                {
+                    bool on = ButtonInk(frame, originX + Px(x), originY + Px(y), hover);
+                    bool want = row[x] == '#';
+                    total++;
+                    if (on == want) hit++;
+                    if (on && want) tp++;
+                    else if (on) fp++;
+                    else if (want) fn++;
+                    if (!on) continue;
+                    if (x < minC) minC = x;
+                    if (x > maxC) maxC = x;
+                }
+            }
+            inkWidth = maxC >= 0 ? maxC - minC + 1 : 0;
+            double accuracy = total == 0 ? 0 : hit / (double)total;
+            int denom = 2 * tp + fp + fn;
+            double overlap = denom == 0 ? 0 : (2.0 * tp) / denom;
+            return (overlap + accuracy) / 2.0;
         }
 
         // The last reroll greys the button out. It then reads REROLL REWARD with no (n).
@@ -598,11 +626,11 @@ namespace Chest
             return sum < 210 && back > sum + 180 && r + 40 < br;
         }
 
-        // 5-wide glyphs taken from the reward button, plus the same stroke style for 0-2.
+        // 5-wide glyphs. 1 and 2 are the live 9-row button strokes. 1 is only two pixels wide.
         static readonly string[][] ChargeShapes = new string[][] {
             new string[] { ".##..", "#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".##.." },
-            new string[] { ".#...", "##...", ".#...", ".#...", ".#...", ".#...", ".#...", "###.." },
-            new string[] { "###..", "...#.", "...#.", "..#..", ".#...", "#....", "#....", "####." },
+            new string[] { "..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".##..", ".##..", ".##.." },
+            new string[] { ".##..", "#..#.", "#..#.", "...#.", "..#..", ".#...", "#....", "#...#", "#####" },
             new string[] { "###..", "...#.", "...#.", ".....", "..##.", "...##", "...##", "...#.", "###.." },
             new string[] { "..#..", "..#..", ".##..", "..#..", "..#..", "..#..", "####.", "..#..", ".##.." },
             new string[] { "####.", "#....", "#....", ".##..", "..##.", "...#.", "...#.", "...#.", "##..." }
@@ -647,9 +675,11 @@ namespace Chest
             return elapsed;
         }
 
-        void Remember(int charges, string mark, bool inPlace)
+        void Remember(int charges, string mark, bool inPlace, bool opened)
         {
-            if (charges >= 0) heldCharges = charges;
+            // A new casket clears a stale count, even when this frame could not read n.
+            if (opened) heldCharges = charges;
+            else if (charges >= 0) heldCharges = charges;
             logged = mark ?? "";
             loggedAt = Now();
             openedInPlace = inPlace;
@@ -731,7 +761,7 @@ namespace Chest
             if (rerollPending && mark.Length > 0 && mark != logged)
             {
                 Open = true;
-                Remember(charges, mark, false);
+                Remember(charges, mark, false, false);
                 return "replaced";
             }
             if (Dropped(charges))
@@ -744,7 +774,7 @@ namespace Chest
                     if (openedInPlace && Elapsed(loggedAt) <= RerollFixMilliseconds)
                     {
                         Open = true;
-                        Remember(charges, mark, false);
+                        Remember(charges, mark, false, false);
                         return "coalesce";
                     }
                     if (charges >= 0) heldCharges = charges;
@@ -754,7 +784,7 @@ namespace Chest
                 if (live)
                 {
                     Open = true;
-                    Remember(charges, mark, false);
+                    Remember(charges, mark, false, false);
                     return "replaced";
                 }
             }
@@ -778,11 +808,11 @@ namespace Chest
                     Open = true;
                     returnSeen = 0;
                     returnMark = "";
-                    Remember(charges, mark, false);
+                    Remember(charges, mark, false, true);
                     return "opened";
                 }
                 Open = true;
-                Remember(charges, mark, false);
+                Remember(charges, mark, false, true);
                 return "opened";
             }
             if (charges >= 0 && !rerollPending) heldCharges = charges;
@@ -794,10 +824,10 @@ namespace Chest
             bool sameCount = charges < 0 || charges == heldCharges;
             if (sameValue && sameCount)
             {
-                Remember(charges, mark, false);
+                Remember(charges, mark, false, false);
                 return "replaced";
             }
-            Remember(charges, mark, true);
+            Remember(charges, mark, true, true);
             return "opened";
         }
 

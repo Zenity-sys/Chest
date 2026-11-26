@@ -891,6 +891,15 @@ namespace Chest
 
             RewardReader.Use(1440, 96);
             Check(GreyReroll() == 0, "a greyed-out REROLL REWARD reads 0 (" + GreyReroll() + ")");
+            Check(ChargeButton(1, 0) == 1, "REROLL REWARD (1) reads 1 (" + ChargeButton(1, 0) + ")");
+            Check(ChargeButton(2, 0) == 2 && ChargeButton(3, 0) == 3 && ChargeButton(4, 0) == 4 && ChargeButton(5, 0) == 5, "reroll digits 2 through 5 read cleanly");
+            Check(ChargeButton(1, 1) == 1 && ChargeButton(2, -1) == 2 && ChargeButton(5, 1) == 5, "a reroll digit shifted by one pixel still reads");
+            RewardSession stale = new RewardSession();
+            string staleA = stale.See(true, 4, "100|a");
+            string staleB = stale.See(true, -1, "200|b");
+            string staleC = stale.See(true, -1, "300|c");
+            string staleD = stale.See(true, 3, "400|d");
+            Check(staleA == "opened" && staleB == "opened" && staleC == "opened" && staleD == "opened", "an unread button does not fake a reroll later (" + staleD + ")");
             Check(StackOnRune(root, stack) == 150, "150 on an air rune reads 150 (" + StackOnRune(root, stack) + ")");
             Check(LawRuneTwenty(stack) == 20, "20 on a law rune reads 20 (" + LawRuneTwenty(stack) + ")");
         }
@@ -1009,6 +1018,33 @@ namespace Chest
             item.Width = rune.Width;
             item.Height = rune.Height;
             return RewardReader.ReadStack(frame, item, glyphs);
+        }
+
+        static int ChargeButton(int digit, int shift)
+        {
+            string[] shape = digit == 1
+                ? new string[] { "..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".##..", ".##..", ".##.." }
+                : digit == 2
+                    ? new string[] { ".##..", "#..#.", "#..#.", "...#.", "..#..", ".#...", "#....", "#...#", "#####" }
+                    : digit == 3
+                        ? new string[] { "###..", "...#.", "...#.", ".....", "..##.", "...##", "...##", "...#.", "###.." }
+                        : digit == 4
+                            ? new string[] { "..#..", "..#..", ".##..", "..#..", "..#..", "..#..", "####.", "..#..", ".##.." }
+                            : new string[] { "####.", "#....", "#....", ".##..", "..##.", "...#.", "...#.", "...#.", "##..." };
+            int width = 396, height = 239;
+            byte[] data = new byte[width * height * 4];
+            for (int i = 0; i < data.Length; i += 4) { data[i] = 80; data[i + 1] = 190; data[i + 2] = 230; data[i + 3] = 255; }
+            for (int y = 200; y <= 216; y++)
+            {
+                Paint(data, width, height, 250, y, 0, 0, 0);
+                Paint(data, width, height, 263, y, 0, 0, 0);
+                Paint(data, width, height, 264, y, 0, 0, 0);
+            }
+            int ox = 256 + shift, oy = 203;
+            for (int y = 0; y < shape.Length; y++)
+                for (int x = 0; x < shape[y].Length; x++)
+                    if (shape[y][x] == '#') Paint(data, width, height, ox + x, oy + y, 0, 0, 0);
+            return RewardReader.RerollCount(new Frame(data, width, height), new Rectangle(0, 0, width, height));
         }
 
         static int GreyReroll()
