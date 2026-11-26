@@ -27,7 +27,7 @@ Chest only looks at the screen. It does not read game memory and it does not cli
 
 ## This build
 
-v0.6.1 is tuned on a modern interface, about a 2560×1369 client, at 96 DPI. The reward panel in those shots is 396×239 and sits just left of centre. The reader checks the gold **TRAIL COMPLETE!** title, not just the red tab, then reads the item strip, the yellow stack numbers, and the reward value line. A noted reward is stored as the plain item.
+v0.6.2 is tuned on a modern interface, about a 2560×1369 client, at 96 DPI. The reward panel in those shots is 396×239 and sits just left of centre. The reader checks the gold **TRAIL COMPLETE!** title, not just the red tab, then reads the item strip, the yellow stack numbers, and the reward value line. A noted reward is stored as the plain item.
 
 Stack digits are 0–9, including a yellow count drawn on a bright icon. Reward values use digits 0–9.
 
@@ -35,7 +35,7 @@ Named rewards use the clean item sprites. A screen crop is shown only when no sp
 
 ## Releases
 
-Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag to publish is `v0.6.1`. The window shows v0.6.1. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
+Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag to publish is `v0.6.2`. The window shows v0.6.2. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
 
 - `Chest-win-Setup.exe`
 - `Chest-win-Portable.zip`
