@@ -229,6 +229,7 @@ evening-dipped-skirt.png|Evening dipped skirt|evening-dipped-skirt|show
 evening-gloves.png|Evening gloves|evening-gloves|show
 evening-masquerade-mask.png|Evening masquerade mask|evening-masquerade-mask|show
 evening-shoes.png|Evening shoes|evening-shoes|show
+event-token.png|Event Token|event-token|show
 explosive-barrel.png|Explosive barrel|explosive-barrel|show
 fire-battlestaff.png|Fire battlestaff|fire-battlestaff|show
 fire-rune.png|Fire rune|fire-rune|show

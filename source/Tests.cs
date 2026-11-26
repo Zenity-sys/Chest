@@ -144,6 +144,13 @@ namespace Chest
             if (coins == null) return;
             IconHit hit = IconLibrary.Match(icons, coins.Bgra, coins.Width, coins.Height, 0.90);
             Check(hit.Known && hit.Name == "Coins", "coins matches itself (" + hit.Score.ToString("0.00") + ")");
+            Frame tokenShot = FramePng.Decode(Path.Combine(root, "fixtures", "event-token.png"));
+            Check(tokenShot != null, "event token reference");
+            if (tokenShot != null)
+            {
+                IconHit token = IconLibrary.Match(icons, tokenShot.Bgra, tokenShot.Width, tokenShot.Height, 0.90);
+                Check(token.Known && token.Name == "Event Token", "event token matches (" + token.Candidate + " " + token.Score.ToString("0.00") + "/" + token.Second.ToString("0.00") + ")");
+            }
             byte[] red = new byte[32 * 32 * 4];
             for (int i = 0; i < red.Length; i += 4) { red[i] = 20; red[i + 1] = 20; red[i + 2] = 220; red[i + 3] = 255; }
             IconHit unknown = IconLibrary.Match(icons, red, 32, 32, 0.94);
