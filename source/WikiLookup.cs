@@ -22,7 +22,8 @@ namespace Chest
     {
         public const int Cells = 16;
         public const double MinimumScore = 0.955;
-        public const double MinimumMargin = 0.04;
+        public const double MinimumShape = 0.90;
+        public const double MinimumMargin = 0.05;
         public const double AmbiguousScore = 0.90;
 
         public static string IndexPath = "";
@@ -62,22 +63,47 @@ namespace Chest
             if (list == null || list.Count == 0 || bgra == null || width < 2) return hit;
             byte[] desc = Describe(bgra, width, height);
             if (Ink(desc) < 6) return hit;
+            double bestShape = 0;
             foreach (WikiEntry entry in list)
             {
-                double score = Score(desc, entry.Desc);
-                if (score > hit.Score)
+                double shape, color;
+                Measure(desc, entry.Desc, out shape, out color);
+                if (color > hit.Score || (color == hit.Score && shape > bestShape))
                 {
                     hit.Second = hit.Score;
-                    hit.Score = score;
+                    hit.Score = color;
+                    bestShape = shape;
                     hit.FileName = entry.FileName;
                     hit.Name = entry.Name;
                     hit.WikiFile = entry.WikiFile;
                 }
-                else if (score > hit.Second) hit.Second = score;
+                else if (color > hit.Second) hit.Second = color;
             }
             double margin = hit.Score - hit.Second;
-            hit.Confident = hit.Score >= MinimumScore && margin >= MinimumMargin && !string.IsNullOrEmpty(hit.Name);
+            // Shape and colour both have to agree. A silhouette match in another colour stays Unknown.
+            hit.Confident = bestShape >= MinimumShape && hit.Score >= MinimumScore && margin >= MinimumMargin && !string.IsNullOrEmpty(hit.Name);
             return hit;
+        }
+
+        // A stack (more than one in the slot) is never a piece of worn gear.
+        public static bool AllowRename(int quantity, string name)
+        {
+            if (quantity > 1 && Gear(name)) return false;
+            return true;
+        }
+
+        public static bool Gear(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string text = name.ToLowerInvariant();
+            string[] parts = new string[] {
+                "staff", "stave", "crossbow", "helm", "platebody", "platelegs", "plateskirt",
+                "kiteshield", "amulet", "beret", "crozier", "tights", "stole"
+            };
+            for (int i = 0; i < parts.Length; i++)
+                if (text.IndexOf(parts[i], StringComparison.Ordinal) >= 0) return true;
+            if (text.IndexOf("bow", StringComparison.Ordinal) >= 0 && text.IndexOf("bowl", StringComparison.Ordinal) < 0) return true;
+            return false;
         }
 
         // Returns at once. The callback runs later, off the caller thread.
@@ -130,7 +156,7 @@ namespace Chest
                     string temp = cached + ".part";
                     using (WebClient client = new WikiClient())
                     {
-                        client.Headers["User-Agent"] = "Chest/0.6.6 (reward logger)";
+                        client.Headers["User-Agent"] = "Chest/0.6.7 (reward logger)";
                         client.DownloadFile(url, temp);
                     }
                     if (!IsPng(temp))
@@ -354,19 +380,33 @@ namespace Chest
 
         public static double Score(byte[] left, byte[] right)
         {
-            if (left == null || right == null || left.Length != right.Length || left.Length < 3) return 0;
-            int sad = 0, n = 0;
+            double shape, color;
+            Measure(left, right, out shape, out color);
+            return color;
+        }
+
+        static void Measure(byte[] left, byte[] right, out double shape, out double color)
+        {
+            shape = 0;
+            color = 0;
+            if (left == null || right == null || left.Length != right.Length || left.Length < 3) return;
+            int lumSad = 0, chanSad = 0, n = 0;
             for (int i = 0; i < left.Length; i += 3)
             {
-                int l = left[i] + left[i + 1] + left[i + 2];
-                int r = right[i] + right[i + 1] + right[i + 2];
+                int lR = left[i], lG = left[i + 1], lB = left[i + 2];
+                int rR = right[i], rG = right[i + 1], rB = right[i + 2];
+                int l = lR + lG + lB;
+                int r = rR + rG + rB;
                 if (l < 18 && r < 18) continue;
-                sad += Math.Abs(left[i] - right[i]) + Math.Abs(left[i + 1] - right[i + 1]) + Math.Abs(left[i + 2] - right[i + 2]);
+                lumSad += Math.Abs(l / 3 - r / 3);
+                chanSad += Math.Abs(lR - rR) + Math.Abs(lG - rG) + Math.Abs(lB - rB);
                 n++;
             }
-            if (n < 6) return 0;
-            double score = 1.0 - sad / (n * 765.0);
-            return score < 0 ? 0 : score;
+            if (n < 6) return;
+            shape = 1.0 - lumSad / (n * 255.0);
+            color = 1.0 - chanSad / (n * 765.0);
+            if (shape < 0) shape = 0;
+            if (color < 0) color = 0;
         }
 
         static int Ink(byte[] desc)

@@ -24,7 +24,7 @@ namespace Chest
 
     internal sealed class RewardShot
     {
-        public int Value;
+        public long Value;
         public string Fingerprint = "";
         public readonly List<SeenItem> Items = new List<SeenItem>();
     }
@@ -132,7 +132,7 @@ namespace Chest
 
         // Item names, quantities, and the casket value. Pixel position is not part of it,
         // so a shifted grab of the same reward stays the same casket.
-        public static string Semantic(int value, IList<SeenItem> items)
+        public static string Semantic(long value, IList<SeenItem> items)
         {
             StringBuilder text = new StringBuilder();
             text.Append(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -315,7 +315,217 @@ namespace Chest
             return quantity;
         }
 
-        static int ReadValue(Frame frame, Rectangle panel, List<Glyph> glyphs)
+        static long ReadValue(Frame frame, Rectangle panel, List<Glyph> glyphs)
+        {
+            long anchored;
+            if (TryReadAnchored(frame, panel, glyphs, out anchored)) return anchored;
+            return ReadLoose(frame, panel, glyphs);
+        }
+
+        // The value line is centered, so a long number starts further left and
+        // COINS! ends further right. Read only the digits between ':' and '!'.
+        static bool TryReadAnchored(Frame frame, Rectangle panel, List<Glyph> glyphs, out long value)
+        {
+            value = 0;
+            if (glyphs == null || glyphs.Count == 0 || frame == null || panel.Width < Px(80)) return false;
+            int height = Px(9);
+            int y = panel.Y + Px(116);
+            int x0 = panel.X;
+            int x1 = panel.X + panel.Width - 1;
+            if (x0 < 0) x0 = 0;
+            if (x1 >= frame.Width) x1 = frame.Width - 1;
+            if (y < 1 || y + height >= frame.Height || x1 <= x0) return false;
+            List<int[]> runs = ValueRuns(frame, x0, x1, y, height);
+            int colon = -1, bang = -1;
+            for (int i = 0; i < runs.Count; i++)
+            {
+                int w = runs[i][1] - runs[i][0] + 1;
+                if (w > Px(3)) continue;
+                bool[] row = RowInk(frame, runs[i][0], runs[i][1], y, height);
+                if (IsColon(row)) colon = i;
+                if (IsBang(row)) bang = i;
+            }
+            if (colon < 0 || bang <= colon + 1) return false;
+            int word = bang;
+            int bestGap = -1;
+            for (int i = bang; i > colon + 1; i--)
+            {
+                int gap = runs[i][0] - runs[i - 1][1] - 1;
+                if (gap > bestGap)
+                {
+                    bestGap = gap;
+                    word = i;
+                }
+            }
+            if (bestGap < Px(3) || word <= colon + 1) return false;
+            StringBuilder text = new StringBuilder();
+            for (int i = colon + 1; i < word; i++)
+            {
+                bool[] row = RowInk(frame, runs[i][0], runs[i][1], y, height);
+                int w = runs[i][1] - runs[i][0] + 1;
+                if (w <= Px(2) && IsComma(row)) continue;
+                AppendDigits(frame, y, runs[i][0], runs[i][1], glyphs, text);
+            }
+            if (text.Length == 0) return false;
+            return long.TryParse(text.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        static void AppendDigits(Frame frame, int y, int x0, int x1, List<Glyph> glyphs, StringBuilder text)
+        {
+            int span = x1 - x0 + 1;
+            if (span >= Px(10))
+            {
+                int x = x0;
+                int guard = 0;
+                while (x <= x1 && guard < 48)
+                {
+                    guard++;
+                    char ch;
+                    int adv;
+                    double score;
+                    if (BestDigit(frame, x, y, glyphs, out ch, out adv, out score))
+                    {
+                        text.Append(ch);
+                        x += adv > 0 ? adv : 1;
+                    }
+                    else x++;
+                }
+                return;
+            }
+            char one;
+            int width;
+            double oneScore;
+            if (BestDigit(frame, x0, y, glyphs, out one, out width, out oneScore)) text.Append(one);
+        }
+
+        static bool BestDigit(Frame frame, int x, int y, List<Glyph> glyphs, out char ch, out int advance, out double score)
+        {
+            ch = '?';
+            advance = 0;
+            score = -1;
+            double second = -1;
+            double recall = 0;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                foreach (Glyph glyph in glyphs)
+                {
+                    if (glyph.Value < '0' || glyph.Value > '9') continue;
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        double s = Score(frame, x + dx, y + dy, glyph, delegate(int px, int py) { return ValueInk(frame, px, py); });
+                        if (s < 0) continue;
+                        int wide = Px(glyph.Width);
+                        bool better = score < 0 || s > score + 0.015 || (s >= score - 0.015 && wide > advance);
+                        if (better)
+                        {
+                            if (ch != '?' && glyph.Value != ch && score > second) second = score;
+                            score = s;
+                            ch = glyph.Value;
+                            advance = wide;
+                            recall = OnRecall(frame, x + dx, y + dy, glyph);
+                        }
+                        else if (glyph.Value != ch && s > second) second = s;
+                    }
+                }
+            }
+            if (score < 0) { score = 0; return false; }
+            if (score >= 0.80) return true;
+            return score >= 0.68 && recall >= 0.78 && score >= second + 0.06;
+        }
+
+        static double OnRecall(Frame frame, int x, int y, Glyph glyph)
+        {
+            int on = 0, hit = 0;
+            for (int yy = 0; yy < glyph.Height; yy++)
+                for (int xx = 0; xx < glyph.Width; xx++)
+                {
+                    if (!glyph.On[yy * glyph.Width + xx]) continue;
+                    on++;
+                    if (ValueInk(frame, x + Px(xx), y + Px(yy))) hit++;
+                }
+            if (on == 0) return 0;
+            return hit / (double)on;
+        }
+
+        static List<int[]> ValueRuns(Frame frame, int x0, int x1, int y, int height)
+        {
+            List<int[]> runs = new List<int[]>();
+            int start = -1, prev = -1;
+            for (int x = x0; x <= x1; x++)
+            {
+                bool on = false;
+                for (int yy = 0; yy < height && !on; yy++)
+                    if (ValueInk(frame, x, y + yy)) on = true;
+                if (on)
+                {
+                    if (start < 0) start = x;
+                    prev = x;
+                }
+                else if (start >= 0)
+                {
+                    runs.Add(new int[] { start, prev });
+                    start = -1;
+                }
+            }
+            if (start >= 0) runs.Add(new int[] { start, prev });
+            return runs;
+        }
+
+        static bool[] RowInk(Frame frame, int x0, int x1, int y, int height)
+        {
+            bool[] row = new bool[height];
+            for (int yy = 0; yy < height; yy++)
+                for (int x = x0; x <= x1 && !row[yy]; x++)
+                    if (ValueInk(frame, x, y + yy)) row[yy] = true;
+            return row;
+        }
+
+        static bool IsColon(bool[] row)
+        {
+            if (row == null || row.Length < 7 || row[row.Length - 1]) return false;
+            return Blobs(row) == 2;
+        }
+
+        static bool IsBang(bool[] row)
+        {
+            int n = row == null ? 0 : row.Length;
+            if (n < 7 || !row[n - 1] || row[n - 2]) return false;
+            int gap = 0;
+            int i = n - 2;
+            while (i >= 0 && !row[i]) { gap++; i--; }
+            if (gap < 2) return false;
+            int stem = 0;
+            for (int k = 0; k <= i; k++) if (row[k]) stem++;
+            return stem >= 3;
+        }
+
+        static bool IsComma(bool[] row)
+        {
+            if (row == null || row.Length < 7) return false;
+            int mid = row.Length / 2;
+            for (int i = 0; i < mid; i++) if (row[i]) return false;
+            int ink = 0;
+            for (int i = mid; i < row.Length; i++) if (row[i]) ink++;
+            return ink >= 1 && ink <= 4;
+        }
+
+        static int Blobs(bool[] row)
+        {
+            int blobs = 0;
+            bool on = false;
+            for (int i = 0; i < row.Length; i++)
+            {
+                if (row[i])
+                {
+                    if (!on) blobs++;
+                    on = true;
+                }
+                else on = false;
+            }
+            return blobs;
+        }
+
+        static long ReadLoose(Frame frame, Rectangle panel, List<Glyph> glyphs)
         {
             if (glyphs == null || glyphs.Count == 0) return 0;
             List<int[]> hits = new List<int[]>();
@@ -371,9 +581,13 @@ namespace Chest
             }
             if (chosen == null) return 0;
             string text = "";
-            foreach (int[] hit in chosen) text += (char)hit[1];
-            int value;
-            return int.TryParse(text, out value) ? value : 0;
+            foreach (int[] hit in chosen)
+            {
+                char ch = (char)hit[1];
+                if (ch >= '0' && ch <= '9') text += ch;
+            }
+            long loose;
+            return long.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out loose) ? loose : 0;
         }
 
         static double Score(Frame frame, int x, int y, Glyph glyph, Func<int, int, bool> ink)
@@ -743,8 +957,8 @@ namespace Chest
 
         internal static bool SameReward(string logged, string mark)
         {
-            int left = MarkValue(logged);
-            int right = MarkValue(mark);
+            long left = MarkValue(logged);
+            long right = MarkValue(mark);
             if (left <= 0 || left != right) return false;
             return ItemKeys(logged) == ItemKeys(mark);
         }
@@ -778,13 +992,13 @@ namespace Chest
             return built.ToString();
         }
 
-        static int MarkValue(string mark)
+        static long MarkValue(string mark)
         {
             if (string.IsNullOrEmpty(mark)) return 0;
             int bar = mark.IndexOf('|');
             string head = bar < 0 ? mark : mark.Substring(0, bar);
-            int value;
-            return int.TryParse(head, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value) ? value : 0;
+            long value;
+            return long.TryParse(head, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value) ? value : 0;
         }
 
         bool Dropped(int charges)
@@ -873,8 +1087,8 @@ namespace Chest
             if (charges >= 0 && !rerollPending) heldCharges = charges;
             if (SameReward(logged, mark)) return "none";
             if (mark.Length == 0 || mark == logged) return "none";
-            int loggedValue = MarkValue(logged);
-            int nextValue = MarkValue(mark);
+            long loggedValue = MarkValue(logged);
+            long nextValue = MarkValue(mark);
             bool sameValue = loggedValue > 0 && loggedValue == nextValue && Elapsed(loggedAt) <= CompletionMilliseconds;
             bool sameCount = charges < 0 || charges == heldCharges;
             if (sameValue && sameCount)

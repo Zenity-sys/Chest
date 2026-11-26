@@ -263,6 +263,78 @@ namespace Chest
             try { if (Directory.Exists(cache)) Directory.Delete(cache, true); } catch (Exception) { }
             WikiLookup.SpriteDirectory = "";
             WikiLookup.AllowNetwork = false;
+            GearMerge(root);
+        }
+
+        static void GearMerge(string root)
+        {
+            Check(!WikiLookup.AllowRename(486, "Staff of earth"), "a stack is not renamed to Staff of earth");
+            Check(!WikiLookup.AllowRename(2, "Rune platebody"), "a stack is not renamed to a platebody");
+            Check(!WikiLookup.AllowRename(3, "Dragon kiteshield"), "a stack is not renamed to a kiteshield");
+            Check(!WikiLookup.AllowRename(4, "Amulet of glory"), "a stack is not renamed to an amulet");
+            Check(!WikiLookup.AllowRename(5, "Magic shortbow"), "a stack is not renamed to a bow");
+            Check(WikiLookup.AllowRename(150, "Air rune"), "a stack of runes can still be named");
+            Check(WikiLookup.AllowRename(1, "Staff of earth"), "one staff can still be named");
+            string dir = Path.Combine(Path.GetTempPath(), "chest-gear-" + Guid.NewGuid().ToString("N"));
+            LootBook book = new LootBook(dir);
+            book.Commit(new LootLine[] {
+                new LootLine { Id = "staff-of-earth", Name = "Staff of earth", Quantity = 8 },
+                new LootLine { Id = "item-stack", Name = "Unknown", Unknown = true, Quantity = 486 }
+            }, 1000);
+            bool merged = book.RenameUnknown("item-stack", "staff-of-earth", "Staff of earth", 486);
+            LootLine staff = null, stack = null;
+            foreach (LootLine line in book.Lines)
+            {
+                if (line.Id == "staff-of-earth") staff = line;
+                if (line.Id == "item-stack") stack = line;
+            }
+            Check(!merged && staff != null && staff.Quantity == 8 && stack != null && stack.Unknown, "486 unknown items stay off the staff count (" + (staff == null ? -1 : staff.Quantity) + ")");
+            byte[] brown = GearBlob(40, 140, 200);
+            byte[] green = GearBlob(40, 180, 40);
+            string index = Path.Combine(dir, "wiki-index.txt");
+            File.WriteAllText(index, "staff-of-earth.png|Staff of earth|Staff of earth.png|" + HexBytes(WikiLookup.Describe(brown, 32, 32)) + "\r\n");
+            WikiLookup.IndexPath = index;
+            WikiLookup.Reset();
+            WikiHit same = WikiLookup.Identify(brown, 32, 32);
+            WikiHit other = WikiLookup.Identify(green, 32, 32);
+            Check(same.Confident && same.Name == "Staff of earth", "the same coloured sprite is named (" + same.Score.ToString("0.00") + ")");
+            Check(!other.Confident, "a different colour stays Unknown (" + other.Name + " " + other.Score.ToString("0.00") + ")");
+            File.AppendAllText(index, "twin.png|Twin staff|Twin staff.png|" + HexBytes(WikiLookup.Describe(brown, 32, 32)) + "\r\n");
+            WikiLookup.Reset();
+            WikiHit ambiguous = WikiLookup.Identify(brown, 32, 32);
+            Check(!ambiguous.Confident, "an ambiguous wiki match stays Unknown (" + ambiguous.Score.ToString("0.00") + "/" + ambiguous.Second.ToString("0.00") + ")");
+            WikiLookup.UseAssets(Path.Combine(root, "assets"));
+            WikiLookup.Reset();
+            try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch (Exception) { }
+        }
+
+        static byte[] GearBlob(byte b, byte g, byte r)
+        {
+            byte[] data = new byte[32 * 32 * 4];
+            for (int y = 4; y < 28; y++)
+                for (int x = 14; x < 18; x++)
+                {
+                    int o = (y * 32 + x) * 4;
+                    data[o] = b; data[o + 1] = g; data[o + 2] = r; data[o + 3] = 255;
+                }
+            for (int x = 8; x < 24; x++)
+            {
+                int o = (8 * 32 + x) * 4;
+                data[o] = b; data[o + 1] = g; data[o + 2] = r; data[o + 3] = 255;
+            }
+            return data;
+        }
+
+        static string HexBytes(byte[] data)
+        {
+            char[] chars = new char[data.Length * 2];
+            const string hex = "0123456789abcdef";
+            for (int i = 0; i < data.Length; i++)
+            {
+                chars[i * 2] = hex[data[i] >> 4];
+                chars[i * 2 + 1] = hex[data[i] & 15];
+            }
+            return new string(chars);
         }
 
         static void Fixtures(string root)
@@ -273,6 +345,11 @@ namespace Chest
             Check(StampValue(value, "211,817 COINS!") == 211817, "211,817 COINS reads 211817");
             Check(StampValue(value, "4,273 COINS!") == 4273, "4,273 COINS reads 4273");
             Check(StampValue(value, "367,467 COINS!") == 367467, "367,467 COINS reads 367467");
+            Check(StampAnchored(value, "0123456789") == 123456789, "every value digit 0 through 9 is read");
+            Check(StampAnchored(value, "8") == 8, "a reward value of 8 is read");
+            Check(StampAnchored(value, "100,000,000") == 100000000L, "100,000,000 keeps every digit");
+            Check(StampAnchored(value, "1,850,960") == 1850960L, "1,850,960 is not cut at the comma");
+            Check(StampAnchored(value, "2,500,000,000") == 2500000000L, "2,500,000,000 fits without overflowing");
             RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
             int[][] quantities = new int[][] {
                 new int[] { 1, 1, 1, 1, 2 },
@@ -658,7 +735,7 @@ namespace Chest
             catch (Exception) { }
         }
 
-        static int StampValue(List<Glyph> glyphs, string text)
+        static long StampValue(List<Glyph> glyphs, string text)
         {
             Frame frame = new Frame(new byte[640 * 280 * 4], 640, 280);
             for (int i = 0; i < frame.Bgra.Length; i += 4)
@@ -692,6 +769,78 @@ namespace Chest
             }
             RewardShot shot = RewardReader.Read(frame, new Rectangle(0, 0, 396, 239), new List<Glyph>(), glyphs);
             return shot.Value;
+        }
+
+        static long StampAnchored(List<Glyph> glyphs, string text)
+        {
+            Frame frame = new Frame(new byte[640 * 280 * 4], 640, 280);
+            for (int i = 0; i < frame.Bgra.Length; i += 4)
+            {
+                frame.Bgra[i] = 16;
+                frame.Bgra[i + 1] = 24;
+                frame.Bgra[i + 2] = 32;
+                frame.Bgra[i + 3] = 255;
+            }
+            int y = 116;
+            PaintValue(frame, 12, y + 1, 236, 236, 246);
+            PaintValue(frame, 12, y + 2, 236, 236, 246);
+            PaintValue(frame, 13, y + 1, 236, 236, 246);
+            PaintValue(frame, 13, y + 2, 236, 236, 246);
+            PaintValue(frame, 12, y + 6, 236, 236, 246);
+            PaintValue(frame, 12, y + 7, 236, 236, 246);
+            PaintValue(frame, 13, y + 6, 236, 236, 246);
+            PaintValue(frame, 13, y + 7, 236, 236, 246);
+            int x = 24;
+            for (int c = 0; c < text.Length; c++)
+            {
+                char ch = text[c];
+                if (ch == ',')
+                {
+                    x += 3;
+                    PaintValue(frame, x, y + 6, 236, 236, 246);
+                    PaintValue(frame, x, y + 7, 236, 236, 246);
+                    x += 5;
+                    continue;
+                }
+                if (ch < '0' || ch > '9') continue;
+                Glyph glyph = null;
+                foreach (Glyph candidate in glyphs) if (candidate.Value == ch) glyph = candidate;
+                if (glyph == null) continue;
+                for (int yy = 0; yy < glyph.Height; yy++)
+                    for (int xx = 0; xx < glyph.Width; xx++)
+                    {
+                        if (!glyph.On[yy * glyph.Width + xx]) continue;
+                        PaintValue(frame, x + xx, y + yy, 236, 236, 246);
+                    }
+                x += glyph.Width + 1;
+            }
+            x += 14;
+            for (int xx = 0; xx < 2; xx++)
+            {
+                for (int yy = 0; yy < 5; yy++) PaintValue(frame, x + xx, y + yy, 236, 236, 246);
+                PaintValue(frame, x + xx, y + 8, 236, 236, 246);
+            }
+            x += 4;
+            Glyph five = null;
+            foreach (Glyph candidate in glyphs) if (candidate.Value == '5') five = candidate;
+            if (five != null)
+            {
+                for (int yy = 0; yy < five.Height; yy++)
+                    for (int xx = 0; xx < five.Width; xx++)
+                        if (five.On[yy * five.Width + xx]) PaintValue(frame, x + xx, y + yy, 236, 236, 246);
+            }
+            RewardShot shot = RewardReader.Read(frame, new Rectangle(0, 0, 396, 239), new List<Glyph>(), glyphs);
+            return shot.Value;
+        }
+
+        static void PaintValue(Frame frame, int x, int y, byte b, byte g, byte r)
+        {
+            if (x < 0 || y < 0 || x >= frame.Width || y >= frame.Height) return;
+            int o = (y * frame.Width + x) * 4;
+            frame.Bgra[o] = b;
+            frame.Bgra[o + 1] = g;
+            frame.Bgra[o + 2] = r;
+            frame.Bgra[o + 3] = 255;
         }
 
         static void Hold(string root)

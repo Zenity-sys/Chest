@@ -805,7 +805,7 @@ namespace Chest
                     if (!File.Exists(file))
                         FramePng.Save(new Frame(cleaned, pw, ph), file);
                     Remember(line.Id, new Frame(cleaned, pw, ph));
-                    QueueLookup(line.Id, cleaned, pw, ph);
+                    QueueLookup(line.Id, cleaned, pw, ph, item.Quantity);
                 }
                 RememberLook(line.Id, line.Name, sig);
                 lines.Add(line);
@@ -817,22 +817,24 @@ namespace Chest
             Say(book.Caskets > 0 ? "Opening " + book.Caskets : "Open a clue casket");
         }
 
-        void QueueLookup(string id, byte[] cleaned, int width, int height)
+        void QueueLookup(string id, byte[] cleaned, int width, int height, int seenQuantity)
         {
             WikiLookup.ResolveAsync(cleaned, width, height, delegate(WikiHit found, string sprite)
             {
                 if (found == null || !found.Confident || string.IsNullOrEmpty(sprite)) return;
-                try { BeginInvoke(new Action(delegate { ApplyFound(id, found, sprite); })); }
+                if (!WikiLookup.AllowRename(seenQuantity, found.Name)) return;
+                try { BeginInvoke(new Action(delegate { ApplyFound(id, found, sprite, seenQuantity); })); }
                 catch (InvalidOperationException) { }
             });
         }
 
-        void ApplyFound(string oldId, WikiHit found, string sprite)
+        void ApplyFound(string oldId, WikiHit found, string sprite, int seenQuantity)
         {
             if (IsDisposed || found == null || !found.Confident) return;
+            if (!WikiLookup.AllowRename(seenQuantity, found.Name)) return;
             string newId = IconLibrary.Slug(found.Name);
             if (string.IsNullOrEmpty(newId)) newId = found.FileName;
-            if (!book.RenameUnknown(oldId, newId, found.Name)) return;
+            if (!book.RenameUnknown(oldId, newId, found.Name, seenQuantity)) return;
             Bitmap previous;
             if (pictures.TryGetValue(oldId, out previous))
             {
