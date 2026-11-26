@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Threading;
 
 namespace Chest
 {
@@ -22,6 +23,7 @@ namespace Chest
             Latch();
             Book();
             Icons(root);
+            WikiFallback(root);
             Fixtures(root);
             Preview(root);
             RealRewards(root);
@@ -179,6 +181,80 @@ namespace Chest
                 for (int i = 3; i < mark.Bgra.Length; i += 4)
                     if (mark.Bgra[i] > 200) visible++;
             Check(missing == null && mark != null && visible > 40, "a missing icon still has a visible mark (" + visible + ")");
+            IconRef star = null, crossbow = null;
+            foreach (IconRef icon in icons)
+            {
+                if (icon.FileName == "small-fallen-star.png") star = icon;
+                if (icon.FileName == "bronze-crossbow.png") crossbow = icon;
+            }
+            Check(star != null && crossbow != null, "fallen star and bronze crossbow are bundled");
+            if (star != null)
+            {
+                IconHit starHit = IconLibrary.Match(icons, star.Bgra, star.Width, star.Height, 0.90);
+                Check(starHit.Known && starHit.Name == "Small fallen star", "small fallen star matches (" + starHit.Candidate + " " + starHit.Score.ToString("0.00") + "/" + starHit.Second.ToString("0.00") + ")");
+            }
+            if (crossbow != null)
+            {
+                IconHit bowHit = IconLibrary.Match(icons, crossbow.Bgra, crossbow.Width, crossbow.Height, 0.90);
+                Check(bowHit.Known && bowHit.Name == "Bronze crossbow", "bronze crossbow matches (" + bowHit.Candidate + " " + bowHit.Score.ToString("0.00") + "/" + bowHit.Second.ToString("0.00") + ")");
+            }
+            IconRef prismatic = null, bonus = null;
+            foreach (IconRef icon in icons)
+            {
+                if (icon.FileName == "small-prismatic-fallen-star.png") prismatic = icon;
+                if (icon.FileName == "bonus-xp-star-small.png") bonus = icon;
+            }
+            if (prismatic != null && star != null)
+            {
+                IconHit prismaticHit = IconLibrary.Match(icons, prismatic.Bgra, prismatic.Width, prismatic.Height, 0.90);
+                Check(prismaticHit.Known && prismaticHit.Name == "Small prismatic fallen star", "prismatic fallen star matches (" + prismaticHit.Candidate + " " + prismaticHit.Score.ToString("0.00") + ")");
+                IconHit bonusHit = bonus == null ? null : IconLibrary.Match(icons, bonus.Bgra, bonus.Width, bonus.Height, 0.90);
+                bool bonusKept = bonusHit != null && bonusHit.Known && bonusHit.Name == "Bonus XP star (small)";
+                Check(bonus == null || bonusKept, "bonus xp star stays itself (" + (bonusHit == null ? "missing" : bonusHit.Candidate) + ")");
+            }
+        }
+
+        static void WikiFallback(string root)
+        {
+            WikiLookup.Reset();
+            WikiLookup.AllowNetwork = false;
+            WikiLookup.UseAssets(Path.Combine(root, "assets"));
+            WikiLookup.SpriteDirectory = Path.Combine(root, "fixtures");
+            string cache = Path.Combine(Path.GetTempPath(), "chest-wiki-cache-test");
+            try { if (Directory.Exists(cache)) Directory.Delete(cache, true); } catch (Exception) { }
+            WikiLookup.CacheDirectory = cache;
+            Frame star = FramePng.Decode(Path.Combine(root, "assets", "icons", "small-fallen-star.png"));
+            Frame shining = FramePng.Decode(Path.Combine(root, "fixtures", "shining-prismatic-small-fallen-star.png"));
+            Check(star != null && shining != null, "wiki lookup sprites load");
+            if (star == null || shining == null) return;
+            WikiHit named = WikiLookup.Identify(star.Bgra, star.Width, star.Height);
+            Check(!named.Confident || named.Name == "Small fallen star", "the fallen star is not given another item's name (" + named.Name + " " + named.Score.ToString("0.00") + "/" + named.Second.ToString("0.00") + ")");
+            WikiHit other = WikiLookup.Identify(shining.Bgra, shining.Width, shining.Height);
+            Check(other.Confident && other.Name == "Shining prismatic small fallen star", "index names a sprite that is not in the catalog (" + other.Name + " " + other.Score.ToString("0.00") + "/" + other.Second.ToString("0.00") + ")");
+            Check(named.Name != other.Name, "a shining star is not called a fallen star");
+            byte[] red = new byte[32 * 32 * 4];
+            for (int i = 0; i < red.Length; i += 4) { red[i] = 20; red[i + 1] = 20; red[i + 2] = 220; red[i + 3] = 255; }
+            WikiHit miss = WikiLookup.Identify(red, 32, 32);
+            Check(!miss.Confident, "a red square is not given a wiki name (" + miss.Name + " " + miss.Score.ToString("0.00") + ")");
+            string cached = WikiLookup.EnsureCached(other);
+            string meta = cached == null ? "" : Path.ChangeExtension(cached, ".txt");
+            bool metaOk = !string.IsNullOrEmpty(meta) && File.Exists(meta) && File.ReadAllText(meta).Contains("Shining prismatic small fallen star");
+            Check(cached != null && File.Exists(cached) && metaOk, "a confident lookup is stored in the local cache");
+            WikiLookup.SpriteDirectory = "";
+            WikiLookup.AllowNetwork = false;
+            string again = WikiLookup.EnsureCached(other);
+            Check(again == cached && File.Exists(again), "the cached sprite is reused with no network");
+            int before = Environment.TickCount;
+            ManualResetEvent pause = new ManualResetEvent(false);
+            WikiLookup.TestPause = pause;
+            WikiLookup.ResolveAsync(shining.Bgra, shining.Width, shining.Height, delegate(WikiHit hit, string path) { });
+            int elapsed = Environment.TickCount - before;
+            pause.Set();
+            WikiLookup.TestPause = null;
+            Check(elapsed < 250, "the wiki lookup does not block the caller (" + elapsed + " ms)");
+            try { if (Directory.Exists(cache)) Directory.Delete(cache, true); } catch (Exception) { }
+            WikiLookup.SpriteDirectory = "";
+            WikiLookup.AllowNetwork = false;
         }
 
         static void Fixtures(string root)
@@ -451,10 +527,24 @@ namespace Chest
             }
             else
             {
-                unknown = 1;
-                slot.Name = "Unknown";
-                slot.Unknown = true;
-                display = Noted.CleanForDisplay(pixels, item.Width, item.Height);
+                WikiHit wiki = WikiLookup.Identify(pixels, item.Width, item.Height);
+                string local = wiki.Confident ? WikiLookup.LocalSprite(wiki) : null;
+                Frame sprite = string.IsNullOrEmpty(local) ? null : FramePng.Decode(local);
+                if (wiki.Confident && sprite != null)
+                {
+                    named = 1;
+                    slot.Name = wiki.Name;
+                    display = sprite.Bgra;
+                    dw = sprite.Width;
+                    dh = sprite.Height;
+                }
+                else
+                {
+                    unknown = 1;
+                    slot.Name = "Unknown";
+                    slot.Unknown = true;
+                    display = Noted.CleanForDisplay(pixels, item.Width, item.Height);
+                }
             }
             slot.Image = BitmapOf(display, dw, dh);
             slot.Look = IconLibrary.Signature(Noted.CleanForDisplay(pixels, item.Width, item.Height), item.Width, item.Height);

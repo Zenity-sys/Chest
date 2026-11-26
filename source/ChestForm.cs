@@ -229,6 +229,8 @@ namespace Chest
             stackGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "stack.txt")));
             valueGlyphs.AddRange(RewardReader.LoadGlyphs(Path.Combine(assetPath, "digits", "value.txt")));
             icons = IconLibrary.Load(Path.Combine(assetPath, "icons"), Path.Combine(assetPath, "icons", "catalog.txt"));
+            WikiLookup.UseAssets(assetPath);
+            WikiLookup.CacheDirectory = Path.Combine(dataRoot, "wiki-cache");
             RewardReader.LoadTitle(Path.Combine(assetPath, "reward", "trail-title.png"));
             RefreshGrid();
             follow.Interval = 50;
@@ -725,6 +727,7 @@ namespace Chest
                     if (!File.Exists(file))
                         FramePng.Save(new Frame(cleaned, pw, ph), file);
                     Remember(line.Id, new Frame(cleaned, pw, ph));
+                    QueueLookup(line.Id, cleaned, pw, ph);
                 }
                 RememberLook(line.Id, line.Name, sig);
                 lines.Add(line);
@@ -733,6 +736,47 @@ namespace Chest
             else book.Commit(lines, shot.Value);
             RefreshGrid();
             Say(book.Caskets > 0 ? "Opening " + book.Caskets : "Open a clue casket");
+        }
+
+        void QueueLookup(string id, byte[] cleaned, int width, int height)
+        {
+            WikiLookup.ResolveAsync(cleaned, width, height, delegate(WikiHit found, string sprite)
+            {
+                if (found == null || !found.Confident || string.IsNullOrEmpty(sprite)) return;
+                try { BeginInvoke(new Action(delegate { ApplyFound(id, found, sprite); })); }
+                catch (InvalidOperationException) { }
+            });
+        }
+
+        void ApplyFound(string oldId, WikiHit found, string sprite)
+        {
+            if (IsDisposed || found == null || !found.Confident) return;
+            string newId = IconLibrary.Slug(found.Name);
+            if (string.IsNullOrEmpty(newId)) newId = found.FileName;
+            if (!book.RenameUnknown(oldId, newId, found.Name)) return;
+            Bitmap previous;
+            if (pictures.TryGetValue(oldId, out previous))
+            {
+                pictures.Remove(oldId);
+                previous.Dispose();
+            }
+            if (!pictures.ContainsKey(newId))
+            {
+                IconRef icon = IconLibrary.Resolve(icons, newId, found.Name);
+                if (icon != null) Remember(newId, new Frame(icon.Bgra, icon.Width, icon.Height));
+                else
+                {
+                    Frame frame = FramePng.Decode(sprite);
+                    if (frame != null) Remember(newId, frame);
+                }
+            }
+            for (int i = 0; i < lookIds.Count; i++)
+            {
+                if (lookIds[i] != oldId) continue;
+                lookIds[i] = newId;
+                lookNames[i] = found.Name;
+            }
+            RefreshGrid();
         }
 
         int FindLook(byte[] sig)

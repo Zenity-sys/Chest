@@ -133,6 +133,40 @@ namespace Chest
             Save();
         }
 
+        // A background lookup named an item that was saved as Unknown.
+        public bool RenameUnknown(string oldId, string newId, string newName)
+        {
+            if (string.IsNullOrEmpty(oldId) || string.IsNullOrEmpty(newId) || string.IsNullOrEmpty(newName)) return false;
+            LootLine line = Find(oldId);
+            if (line == null || !line.Unknown) return false;
+            LootLine existing = Find(newId);
+            if (existing != null && existing != line)
+            {
+                existing.Quantity += line.Quantity;
+                existing.Name = newName;
+                existing.Unknown = false;
+                Lines.Remove(line);
+            }
+            else
+            {
+                line.Id = newId;
+                line.Name = newName;
+                line.Unknown = false;
+            }
+            if (Last != null)
+            {
+                foreach (LootLine item in Last.Items)
+                {
+                    if (item.Id != oldId) continue;
+                    item.Id = newId;
+                    item.Name = newName;
+                    item.Unknown = false;
+                }
+            }
+            Save();
+            return true;
+        }
+
         void Add(IList<LootLine> items)
         {
             foreach (LootLine item in items)

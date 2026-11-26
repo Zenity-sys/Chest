@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Fallen stars, prismatic stars, XP lamps, prismatic lamps, crossbows, salvage, seeds, and other common casket drops have clean sprites.
+- An unknown item is shown immediately, then named in the background when a wiki sprite matches. The sprite is cached for later. A weak match stays Unknown.
 - Opening the next casket without closing the reward window counts as a new casket once the new items settle. A one-step reroll still replaces the last casket.
 - Saved icons from an older version are matched by name. A missing picture stays visible.
 - Reset on the reward panel asks for a second click.
