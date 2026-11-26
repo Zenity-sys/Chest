@@ -44,6 +44,18 @@ namespace Chest
             if (bgra == null || width < 2 || height < 2) return bgra;
             byte[] copy = new byte[bgra.Length];
             Buffer.BlockCopy(bgra, 0, copy, 0, bgra.Length);
+            int br = 0, bgg = 0, bb = 0, samples = 0;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    if (x > 1 && y > 1 && x < width - 2 && y < height - 2) continue;
+                    int o = (y * width + x) * 4;
+                    if (copy[o + 3] < 128) continue;
+                    bb += copy[o]; bgg += copy[o + 1]; br += copy[o + 2];
+                    samples++;
+                }
+            if (samples < 1) return copy;
+            br /= samples; bgg /= samples; bb /= samples;
             int n = width * height;
             bool[] drop = new bool[n];
             int[] queue = new int[n];
@@ -53,7 +65,7 @@ namespace Chest
                 {
                     if (x != 0 && y != 0 && x != width - 1 && y != height - 1) continue;
                     int i = y * width + x;
-                    if (SlotPixel(copy, i * 4, x, y, width, height))
+                    if (NearCorner(copy, i * 4, br, bgg, bb))
                     {
                         drop[i] = true;
                         queue[qt++] = i;
@@ -63,44 +75,31 @@ namespace Chest
             {
                 int i = queue[qh++];
                 int x = i % width, y = i / width;
-                Try(copy, drop, queue, ref qt, width, height, x + 1, y);
-                Try(copy, drop, queue, ref qt, width, height, x - 1, y);
-                Try(copy, drop, queue, ref qt, width, height, x, y + 1);
-                Try(copy, drop, queue, ref qt, width, height, x, y - 1);
+                Spread(copy, drop, queue, ref qt, width, height, x + 1, y, br, bgg, bb);
+                Spread(copy, drop, queue, ref qt, width, height, x - 1, y, br, bgg, bb);
+                Spread(copy, drop, queue, ref qt, width, height, x, y + 1, br, bgg, bb);
+                Spread(copy, drop, queue, ref qt, width, height, x, y - 1, br, bgg, bb);
             }
             for (int i = 0; i < n; i++)
-            {
-                int o = i * 4;
-                if (copy[o + 3] < 128) continue;
-                int x = i % width, y = i / width;
-                int b = copy[o], g = copy[o + 1], r = copy[o + 2];
-                bool digit = y < height * 0.42 && x < width * 0.55 && r > 200 && g > 165 && b < 90;
-                if (drop[i] || IsPaper(r, g, b) || digit || (r > 230 && g > 230 && b > 230)) copy[o + 3] = 0;
-            }
+                if (drop[i]) copy[i * 4 + 3] = 0;
             return copy;
         }
 
-        static void Try(byte[] copy, bool[] drop, int[] queue, ref int qt, int width, int height, int x, int y)
+        static void Spread(byte[] copy, bool[] drop, int[] queue, ref int qt, int width, int height, int x, int y, int br, int bg, int bb)
         {
             if (x < 0 || y < 0 || x >= width || y >= height) return;
             int i = y * width + x;
             if (drop[i]) return;
-            if (!SlotPixel(copy, i * 4, x, y, width, height)) return;
+            if (!NearCorner(copy, i * 4, br, bg, bb)) return;
             drop[i] = true;
             queue[qt++] = i;
         }
 
-        static bool SlotPixel(byte[] px, int o, int x, int y, int width, int height)
+        static bool NearCorner(byte[] px, int o, int br, int bg, int bb)
         {
-            if (px[o + 3] < 128) return true;
+            if (px[o + 3] < 40) return true;
             int b = px[o], g = px[o + 1], r = px[o + 2];
-            int max = r > g ? r : g; if (b > max) max = b;
-            int min = r < g ? r : g; if (b < min) min = b;
-            int sum = r + g + b;
-            if (IsPaper(r, g, b)) return true;
-            if (r > 230 && g > 230 && b > 230) return true;
-            // The slot tile is a flat dark blue-grey, a little lighter than the panel.
-            return max - min < 36 && sum < 150 && sum > 12;
+            return Math.Abs(r - br) + Math.Abs(g - bg) + Math.Abs(b - bb) <= 28;
         }
 
         static bool IsPaper(int r, int g, int b)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -51,7 +52,7 @@ namespace Chest
             ChestFace.Content(ClientRectangle, out grid, out clues, out undo, out unknown);
             int columns = ChestFace.Columns(grid.Width, IconSize, IconGap);
             int rows = Slots.Count == 0 ? 0 : (Slots.Count + columns - 1) / columns;
-            int content = rows * (IconSize + IconGap);
+            int content = rows * (IconSize + 14);
             return Math.Max(0, content - grid.Height);
         }
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -103,14 +104,16 @@ namespace Chest
             Rectangle grid, clues, undo, unknown;
             ChestFace.Content(ClientRectangle, out grid, out clues, out undo, out unknown);
             if (!grid.Contains(point)) return null;
-            int icon = IconSize, gap = IconGap, cell = icon + gap;
+            int icon = IconSize, gap = IconGap, cellW = icon + gap, cellH = icon + 14;
             int columns = ChestFace.Columns(grid.Width, icon, gap);
             int x = point.X - grid.X;
             int y = point.Y - grid.Y + scroll;
             if (x < 0 || y < 0) return null;
-            int col = x / cell;
-            int row = y / cell;
-            if (col >= columns || (x % cell) >= icon || (y % cell) >= icon) return null;
+            int col = x / cellW;
+            int row = y / cellH;
+            if (col >= columns || (x % cellW) >= icon) return null;
+            int iy = y % cellH;
+            if (iy < 12 || iy >= 12 + icon) return null;
             int index = row * columns + col;
             if (index < 0 || index >= Slots.Count) return null;
             return Slots[index];
@@ -164,6 +167,13 @@ namespace Chest
         volatile bool saveRequested;
         volatile int clientEpoch;
         int watchEpoch;
+        readonly object grabLock = new object();
+        Frame lastGrab;
+        Rectangle lastPanel;
+        bool lastTitle;
+        int lastCharges = -1;
+        string lastAction = "";
+        RewardShot lastShot;
         Thread watcher;
         Action restartClick;
 
@@ -305,6 +315,10 @@ namespace Chest
             updates.Text = "Updates";
             updates.Click += delegate { AppUpdates.Check(this, true); };
             Controls.Add(updates);
+            OpaqueButton debug = new OpaqueButton();
+            debug.Text = "Debug";
+            debug.Click += delegate { SaveDebug(); };
+            Controls.Add(debug);
             restart.Text = "Restart";
             restart.Tone = ButtonTone.Primary;
             restart.Visible = false;
@@ -350,6 +364,7 @@ namespace Chest
                 if (button.Text == "Save capture") { right -= 96; button.SetBounds(right, 34, 92, 24); button.Visible = true; }
                 if (button.Text == "Reset") { right -= 60; button.SetBounds(right, 34, 56, 24); button.Visible = true; }
                 if (button.Text == "Updates") { right -= 72; button.SetBounds(right, 34, 68, 24); button.Visible = true; }
+                if (button.Text == "Debug") { right -= 60; button.SetBounds(right, 34, 56, 24); button.Visible = true; }
             }
             restart.SetBounds(8, 34, 72, 24);
             status.SetBounds(8, 58, w - 16, 16);
@@ -530,12 +545,28 @@ namespace Chest
             if (!titled)
             {
                 session.See(false, -1, null);
+                lock (grabLock) { lastGrab = frame; lastPanel = Rectangle.Empty; lastTitle = false; lastAction = "closed"; }
+                DetectionLog.Write("no TRAIL COMPLETE");
                 return;
             }
             RewardShot shot = RewardReader.Read(frame, local, stackGlyphs, valueGlyphs);
-            if (shot.Items.Count == 0) return;
+            if (shot.Items.Count == 0)
+            {
+                DetectionLog.Write("title found, no items");
+                return;
+            }
             int charges = RewardReader.RerollCount(frame, local);
-            string action = session.See(true, charges, RewardReader.Fingerprint(frame, local));
+            string action = session.See(true, charges, shot.Fingerprint);
+            lock (grabLock)
+            {
+                lastGrab = frame;
+                lastPanel = local;
+                lastTitle = true;
+                lastCharges = charges;
+                lastAction = action;
+                lastShot = shot;
+            }
+            DetectionLog.Write("title n=" + charges + " value=" + shot.Value + " items=" + shot.Items.Count + " " + action);
             if (action == "none" || action == "closed") return;
             bool replace = action == "replaced";
             try { BeginInvoke(new Action(delegate { Apply(shot, replace); })); }
@@ -665,6 +696,68 @@ namespace Chest
             finally { bitmap.UnlockBits(data); }
             pictures[id] = bitmap;
             return bitmap;
+        }
+
+        void SaveDebug()
+        {
+            try
+            {
+                Frame grab;
+                Rectangle panel;
+                bool title;
+                int charges;
+                string action;
+                RewardShot shot;
+                lock (grabLock)
+                {
+                    grab = lastGrab;
+                    panel = lastPanel;
+                    title = lastTitle;
+                    charges = lastCharges;
+                    action = lastAction;
+                    shot = lastShot;
+                }
+                string dir = Path.Combine(dataRoot, "debug");
+                Directory.CreateDirectory(dir);
+                string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                List<string> names = new List<string>();
+                List<byte[]> blobs = new List<byte[]>();
+                if (grab != null)
+                {
+                    names.Add("client.png");
+                    blobs.Add(FramePng.Encode(grab));
+                    if (title && panel.Width > 0)
+                    {
+                        names.Add("reward.png");
+                        blobs.Add(FramePng.Encode(grab.Crop(panel)));
+                    }
+                }
+                StringBuilder state = new StringBuilder();
+                state.AppendLine("version " + AppBranding.DisplayVersion);
+                state.AppendLine("title " + (title ? "yes" : "no"));
+                state.AppendLine("action " + action);
+                state.AppendLine("reroll " + charges);
+                state.AppendLine("value " + (shot == null ? 0 : shot.Value));
+                state.AppendLine("caskets " + book.Caskets);
+                if (shot != null)
+                    foreach (SeenItem item in shot.Items)
+                        state.AppendLine("item " + item.Quantity + " at " + item.X + "," + item.Y);
+                foreach (LootLine line in book.Lines)
+                    state.AppendLine("stack " + line.Id + " " + line.Quantity + " " + line.Name);
+                names.Add("state.txt");
+                blobs.Add(Encoding.UTF8.GetBytes(state.ToString()));
+                names.Add("detect.log");
+                blobs.Add(Encoding.UTF8.GetBytes(DetectionLog.Tail()));
+                string zip = Path.Combine(dir, "chest-debug-" + stamp + ".zip");
+                StoredZip.Create(zip, names, blobs);
+                status.Text = "Saved a debug pack.";
+                Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = "\"" + dir + "\"", UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write(ex);
+                status.Text = "Could not save the debug pack.";
+            }
         }
 
         void SaveCapture(Frame frame)

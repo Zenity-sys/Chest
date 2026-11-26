@@ -89,10 +89,11 @@ namespace Chest
 
             Rectangle grid, clues, undo, unknown;
             Content(bounds, out grid, out clues, out undo, out unknown);
-            int cell = icon + gap;
+            int cellW = icon + gap;
+            int cellH = icon + 14;
             int columns = Columns(grid.Width, icon, gap);
             int rows = slots == null || slots.Count == 0 ? 0 : (slots.Count + columns - 1) / columns;
-            int contentHeight = rows * cell;
+            int contentHeight = rows * cellH;
             int maxScroll = Math.Max(0, contentHeight - grid.Height);
             if (scroll < 0) scroll = 0;
             if (scroll > maxScroll) scroll = maxScroll;
@@ -116,10 +117,10 @@ namespace Chest
                         SlotView slot = slots[i];
                         int col = i % columns;
                         int row = i / columns;
-                        int x = grid.X + col * cell;
-                        int y = grid.Y + row * cell - scroll;
-                        if (y > grid.Bottom || y + cell < grid.Top) continue;
-                        Rectangle cellRect = new Rectangle(x, y, cell - 2, cell - 2);
+                        int x = grid.X + col * cellW;
+                        int y = grid.Y + row * cellH - scroll;
+                        if (y > grid.Bottom || y + cellH < grid.Top) continue;
+                        Rectangle cellRect = new Rectangle(x, y, cellW - 2, 12);
                         g.SetClip(Rectangle.Intersect(grid, cellRect));
                         if (slot.Image != null)
                         {
@@ -133,8 +134,10 @@ namespace Chest
                                 dh = Math.Max(1, (int)Math.Round(dh * scale));
                             }
                             int ix = x + Math.Max(0, (icon - dw) / 2);
-                            int iy = y + 9;
+                            int iy = y + 12;
+                            g.SetClip(Rectangle.Intersect(grid, new Rectangle(x, iy, cellW - 2, icon)));
                             g.DrawImage(slot.Image, new Rectangle(ix, iy, dw, dh));
+                            g.SetClip(Rectangle.Intersect(grid, cellRect));
                         }
                         string qty = StackText.Format(slot.Quantity);
                         g.DrawString(qty, qtyFont, shadow, x + 1, y + 1);

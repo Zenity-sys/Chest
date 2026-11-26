@@ -37,7 +37,7 @@ The icon folder is seeded from common reward sprites and from collection log scr
 
 ## Releases
 
-Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag is `v0.4.1`. The window shows v0.4.1. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
+Push a tag that matches the first three parts of the version in `source/app.manifest`. The current tag is `v0.4.2`. The window shows v0.4.2. The Windows workflow builds with `source/build.ps1`, packs the exe and the `assets` folder, and publishes:
 
 - `Chest-win-Setup.exe`
 - `Chest-win-Portable.zip`

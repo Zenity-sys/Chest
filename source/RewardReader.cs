@@ -569,7 +569,6 @@ namespace Chest
         public bool Open;
         int misses;
         int charges = -1;
-        string mark;
 
         public string See(bool visible, int charges, string mark)
         {
@@ -582,7 +581,6 @@ namespace Chest
                     Open = false;
                     misses = 0;
                     this.charges = -1;
-                    this.mark = null;
                     return "closed";
                 }
                 return "none";
@@ -592,24 +590,16 @@ namespace Chest
             {
                 Open = true;
                 this.charges = charges;
-                this.mark = mark;
                 return "opened";
             }
             if (this.charges >= 0 && charges == this.charges - 1)
             {
                 this.charges = charges;
-                if (mark != null) this.mark = mark;
                 return "replaced";
             }
-            bool different = mark != null && this.mark != null && mark != this.mark;
-            if (charges >= 0 && different)
-            {
-                this.charges = charges;
-                this.mark = mark;
-                return "opened";
-            }
+            // The picture jitters while the window stays up. That is not a new casket.
+            // A refill (n goes up) is not one either. A new casket needs the window to close first.
             if (charges >= 0) this.charges = charges;
-            if (mark != null) this.mark = mark;
             return "none";
         }
 
@@ -618,7 +608,6 @@ namespace Chest
             Open = false;
             misses = 0;
             charges = -1;
-            mark = null;
         }
     }
 }
