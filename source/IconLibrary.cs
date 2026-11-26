@@ -267,6 +267,72 @@ namespace Chest
                 }
             return bits.ToString("x16");
         }
+
+        // A saved session from an older build may name an icon that is no longer
+        // at that key. Match the name or its slug before giving up.
+        public static IconRef Resolve(List<IconRef> icons, string id, string name)
+        {
+            if (icons == null) return null;
+            string slugId = Slug(id);
+            string slugName = Slug(name);
+            IconRef spare = null;
+            foreach (IconRef icon in icons)
+            {
+                if (!SameIcon(icon, id, name, slugId, slugName)) continue;
+                if (icon.Show) return icon;
+                if (spare == null) spare = icon;
+            }
+            return spare;
+        }
+
+        static bool SameIcon(IconRef icon, string id, string name, string slugId, string slugName)
+        {
+            string file = icon.FileName ?? "";
+            if (file.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) file = file.Substring(0, file.Length - 4);
+            string group = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
+            if (!string.IsNullOrEmpty(id) && (group == id || icon.Name == id || file == id || Slug(group) == slugId || Slug(icon.Name) == slugId || file == slugId))
+                return true;
+            if (!string.IsNullOrEmpty(name) && name != "Unknown" && (icon.Name == name || Slug(icon.Name) == slugName || file == slugName || Slug(group) == slugName))
+                return true;
+            return false;
+        }
+
+        public static string Slug(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            System.Text.StringBuilder built = new System.Text.StringBuilder();
+            bool dash = false;
+            foreach (char ch in text.Trim().ToLowerInvariant())
+            {
+                bool keep = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+                if (keep) { built.Append(ch); dash = false; }
+                else if (!dash && built.Length > 0) { built.Append('-'); dash = true; }
+            }
+            if (dash && built.Length > 0) built.Length -= 1;
+            return built.ToString();
+        }
+
+        // A gold mark so a slot is never an empty number after an upgrade.
+        public static Frame Placeholder()
+        {
+            int n = 32;
+            byte[] px = new byte[n * n * 4];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    int dx = x - 15, dy = y - 15;
+                    if (dx < 0) dx = -dx;
+                    if (dy < 0) dy = -dy;
+                    if (dx + dy > 13) continue;
+                    int o = (y * n + x) * 4;
+                    bool edge = dx + dy >= 11;
+                    px[o] = edge ? (byte)40 : (byte)58;
+                    px[o + 1] = edge ? (byte)166 : (byte)195;
+                    px[o + 2] = edge ? (byte)201 : (byte)232;
+                    px[o + 3] = 255;
+                }
+            return new Frame(px, n, n);
+        }
     }
 
     internal static class FramePng

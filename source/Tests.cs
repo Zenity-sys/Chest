@@ -58,6 +58,20 @@ namespace Chest
                 if (held.See(true, 5, "same-frame") == "opened") repeats++;
             Check(repeats == 1 && held.See(true, 5, "jitter-" + repeats) == "none", "the same open window logged 100 times is one casket");
 
+            RewardSession inplace = new RewardSession();
+            string stay = inplace.See(true, 5, "casket-a");
+            string againSame = inplace.See(true, 5, "casket-a");
+            string half = inplace.See(true, 5, "casket-b-partial");
+            string next = inplace.See(true, 5, "casket-b");
+            string settled = inplace.See(true, 5, "casket-b");
+            string heldOpen = inplace.See(true, 5, "casket-b");
+            Check(stay == "opened" && againSame == "none" && half == "none" && next == "none" && settled == "opened" && heldOpen == "none", "an in-place casket counts once the new read settles");
+            string raised = inplace.See(true, 6, "casket-c");
+            string raisedAgain = inplace.See(true, 6, "casket-c");
+            Check(raised == "none" && raisedAgain == "opened", "n going up on the same window is a new casket");
+            string reroll = inplace.See(true, 5, "casket-c-reroll");
+            Check(reroll == "replaced", "n dropping by one on the same window is still a reroll");
+
             RewardSession again = new RewardSession();
             again.MissesBeforeClose = 3;
             string firstOpen = again.See(true, 5, "alpha");
@@ -156,6 +170,15 @@ namespace Chest
             for (int i = 0; i < red.Length; i += 4) { red[i] = 20; red[i + 1] = 20; red[i + 2] = 220; red[i + 3] = 255; }
             IconHit unknown = IconLibrary.Match(icons, red, 32, 32, 0.94);
             Check(!unknown.Known && unknown.Name == "Unknown", "a plain red square stays unknown");
+            IconRef legacy = IconLibrary.Resolve(icons, "old-build-missing-path", "Dragon helm");
+            Check(legacy != null && legacy.Name == "Dragon helm" && legacy.FileName == "dragon-helm.png", "a stale saved icon is found by its name");
+            IconRef missing = IconLibrary.Resolve(icons, "no-such-file", "Not A Real Item");
+            Frame mark = IconLibrary.Placeholder();
+            int visible = 0;
+            if (mark != null)
+                for (int i = 3; i < mark.Bgra.Length; i += 4)
+                    if (mark.Bgra[i] > 200) visible++;
+            Check(missing == null && mark != null && visible > 40, "a missing icon still has a visible mark (" + visible + ")");
         }
 
         static void Fixtures(string root)

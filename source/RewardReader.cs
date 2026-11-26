@@ -572,20 +572,27 @@ namespace Chest
         };
     }
 
-    // opened: a reward window that is not a one-step reroll. Count it.
+    // opened: a new casket. The window just appeared, or it stayed open and the
+    // items or value settled on something new without a one-step reroll.
     // replaced: REROLL REWARD (n) fell by exactly one on this same window.
     // closed: the window has been gone long enough that the next one is new.
     internal sealed class RewardSession
     {
         public int MissesBeforeClose = 3;
+        public int StableReads = 2;
         public bool Open;
         int misses;
         int charges = -1;
+        string logged = "";
+        string pending = "";
+        int pendingSeen;
 
         public string See(bool visible, int charges, string mark)
         {
             if (!visible)
             {
+                pending = "";
+                pendingSeen = 0;
                 if (!Open) return "none";
                 misses++;
                 if (misses >= MissesBeforeClose)
@@ -593,6 +600,7 @@ namespace Chest
                     Open = false;
                     misses = 0;
                     this.charges = -1;
+                    logged = "";
                     return "closed";
                 }
                 return "none";
@@ -602,17 +610,35 @@ namespace Chest
             {
                 Open = true;
                 this.charges = charges;
+                logged = mark ?? "";
+                pending = "";
+                pendingSeen = 0;
                 return "opened";
             }
             if (this.charges >= 0 && charges == this.charges - 1)
             {
                 this.charges = charges;
+                logged = mark ?? "";
+                pending = "";
+                pendingSeen = 0;
                 return "replaced";
             }
-            // The picture jitters while the window stays up. That is not a new casket.
-            // A refill (n goes up) is not one either. A new casket needs the window to close first.
             if (charges >= 0) this.charges = charges;
-            return "none";
+            if (string.IsNullOrEmpty(mark) || mark == logged)
+            {
+                pending = "";
+                pendingSeen = 0;
+                return "none";
+            }
+            // A half-drawn frame changes again. Only a repeated read is a new casket.
+            if (mark == pending) pendingSeen++;
+            else { pending = mark; pendingSeen = 1; }
+            int need = StableReads < 2 ? 2 : StableReads;
+            if (pendingSeen < need) return "none";
+            logged = mark;
+            pending = "";
+            pendingSeen = 0;
+            return "opened";
         }
 
         public void Reset()
@@ -620,6 +646,9 @@ namespace Chest
             Open = false;
             misses = 0;
             charges = -1;
+            logged = "";
+            pending = "";
+            pendingSeen = 0;
         }
     }
 }

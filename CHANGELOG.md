@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Opening the next casket without closing the reward window counts as a new casket once the new items settle. A one-step reroll still replaces the last casket.
+- Saved icons from an older version are matched by name. A missing picture stays visible.
+- Reset on the reward panel asks for a second click.
 - Each client uses its own resolution and DPI. After the reward window is found, later reads stay on that region.
 - Chest paints its own panel out of the capture. Companion can open it with a client handle, a process id, or bind.txt.
 

@@ -28,12 +28,14 @@ namespace Chest
         public long RewardValue;
         public int Caskets;
         public bool UndoArmed;
+        public bool ResetArmed;
         public bool Logged;
         public bool HistoryOpen;
         public string Mode = "grid";
         public string Detail;
         public float UiScale = 1F;
         public Action UndoClicked;
+        public Action ResetClicked;
         public Action UnknownClicked;
         public Action DebugClicked;
         public Action<string> ModeChanged;
@@ -102,6 +104,7 @@ namespace Chest
             if (hit < 0 || hit != was) return;
             if (hit == 0) { HistoryOpen = !HistoryOpen; scroll = 0; }
             if (hit == 1 && UndoClicked != null) UndoClicked();
+            if (hit == 6 && ResetClicked != null) ResetClicked();
             if (hit == 2 && UnknownClicked != null) UnknownClicked();
             if (hit == 3 && DebugClicked != null) DebugClicked();
             if (hit == 4 || hit == 5)
@@ -115,7 +118,7 @@ namespace Chest
         {
             if (UiScale <= 1.01F)
             {
-                ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged);
+                ChestFace.Draw(e.Graphics, ClientRectangle, Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged, ResetArmed);
                 return;
             }
             e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
@@ -123,7 +126,7 @@ namespace Chest
             e.Graphics.ScaleTransform(UiScale, UiScale);
             int w = Math.Max(1, (int)(ClientSize.Width / UiScale));
             int h = Math.Max(1, (int)(ClientSize.Height / UiScale));
-            ChestFace.Draw(e.Graphics, new Rectangle(0, 0, w, h), Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged);
+            ChestFace.Draw(e.Graphics, new Rectangle(0, 0, w, h), Slots, scroll, RewardValue, Caskets, hot, down, UndoArmed, IconSize, ChestFace.IconGap, tip, tipAt.X, tipAt.Y, Mode, HistoryOpen, Opens, Detail, Logged, ResetArmed);
         }
     }
 
@@ -219,6 +222,7 @@ namespace Chest
             BuildChrome();
             chest.Mode = viewMode;
             chest.UndoClicked = delegate { OnUndo(); };
+            chest.ResetClicked = delegate { OnReset(); };
             chest.UnknownClicked = delegate { OpenUnknown(); };
             chest.DebugClicked = delegate { SaveDebug(); };
             chest.ModeChanged = delegate(string mode) { viewMode = mode; chest.Mode = mode; SaveView(); };
@@ -505,10 +509,13 @@ namespace Chest
             {
                 resetArmed = true;
                 resetArmedAt = DateTime.UtcNow;
+                chest.ResetArmed = true;
+                chest.Invalidate();
                 Say("Click Reset again to clear the chest.");
                 return;
             }
             resetArmed = false;
+            chest.ResetArmed = false;
             book.Reset();
             RefreshGrid();
             Say("Chest cleared.");
@@ -759,6 +766,7 @@ namespace Chest
             chest.RewardValue = book.Value;
             chest.Caskets = book.Caskets;
             chest.UndoArmed = undoArmed;
+            chest.ResetArmed = resetArmed;
             chest.Logged = book.Caskets > 0;
             chest.Opens = book.Opens;
             chest.ShowSlots(slots);
@@ -769,28 +777,20 @@ namespace Chest
         {
             Bitmap cached;
             if (pictures.TryGetValue(line.Id, out cached)) return cached;
-            if (line.Unknown)
+            IconRef icon = IconLibrary.Resolve(icons, line.Id, line.Name);
+            if (icon != null)
+                return Remember(line.Id, new Frame(icon.Bgra, icon.Width, icon.Height));
+            if (line.Unknown && line.Id != null && line.Id.StartsWith("unknown-") && line.Id.Length > "unknown-".Length)
             {
                 string file = Path.Combine(book.UnknownDirectory, line.Id.Substring("unknown-".Length) + ".png");
                 Frame frame = File.Exists(file) ? FramePng.Decode(file) : null;
-                if (frame == null) return null;
-                byte[] cleaned = Noted.CleanForDisplay(frame.Bgra, frame.Width, frame.Height);
-                return Remember(line.Id, new Frame(cleaned, frame.Width, frame.Height));
+                if (frame != null)
+                {
+                    byte[] cleaned = Noted.CleanForDisplay(frame.Bgra, frame.Width, frame.Height);
+                    return Remember(line.Id, new Frame(cleaned, frame.Width, frame.Height));
+                }
             }
-            IconRef fallback = null;
-            foreach (IconRef icon in icons)
-            {
-                string group = string.IsNullOrEmpty(icon.Group) ? icon.Name : icon.Group;
-                if (group != line.Id && icon.Name != line.Name) continue;
-                if (icon.Show) return Remember(line.Id, new Frame(icon.Bgra, icon.Width, icon.Height));
-                if (fallback == null) fallback = icon;
-            }
-            if (fallback != null)
-            {
-                byte[] cleaned = Noted.CleanForDisplay(fallback.Bgra, fallback.Width, fallback.Height);
-                return Remember(line.Id, new Frame(cleaned, fallback.Width, fallback.Height));
-            }
-            return null;
+            return Remember(line.Id, IconLibrary.Placeholder());
         }
 
         Bitmap Remember(string id, Frame frame)

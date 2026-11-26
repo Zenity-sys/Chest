@@ -15,6 +15,7 @@ namespace Chest
         public Rectangle Session;
         public Rectangle HistoryButton;
         public Rectangle UndoButton;
+        public Rectangle ResetButton;
         public Rectangle UnknownButton;
         public Rectangle DebugButton;
         public Rectangle GridToggle;
@@ -113,13 +114,14 @@ namespace Chest
             int wellH = Math.Max(36, sessionY - 6 - wellTop);
             face.Well = new Rectangle(bounds.X + pad, wellTop, wellW, wellH);
             face.Session = new Rectangle(face.Well.X, sessionY, wellW, 18);
-            int gap = 6;
+            int gap = 4;
             int inner = Math.Max(40, wellW - 8);
-            int bw = Math.Max(36, (inner - gap * 3) / 4);
+            int bw = Math.Max(32, (inner - gap * 4) / 5);
             int x = face.Well.X;
             face.HistoryButton = new Rectangle(x, buttonY, bw, buttonH);
             face.UndoButton = new Rectangle(x + (bw + gap), buttonY, bw, buttonH);
-            face.UnknownButton = new Rectangle(x + (bw + gap) * 2, buttonY, bw, buttonH);
+            face.ResetButton = new Rectangle(x + (bw + gap) * 2, buttonY, bw, buttonH);
+            face.UnknownButton = new Rectangle(x + (bw + gap) * 3, buttonY, bw, buttonH);
             face.DebugButton = new Rectangle(face.Well.Right - 8 - bw, buttonY, bw, buttonH);
             int usable = Math.Max(32, wellW - 8);
             if (history || mode == "list")
@@ -147,6 +149,7 @@ namespace Chest
             FaceLayout face = Measure(bounds, mode, icon, count, history, historyCount);
             if (face.HistoryButton.Contains(point)) return 0;
             if (face.UndoButton.Contains(point)) return 1;
+            if (face.ResetButton.Contains(point)) return 6;
             if (face.UnknownButton.Contains(point)) return 2;
             if (face.DebugButton.Contains(point)) return 3;
             if (face.GridToggle.Contains(point)) return 4;
@@ -177,7 +180,7 @@ namespace Chest
             return Math.Max(0, face.ContentHeight - face.Well.Height);
         }
 
-        public static void Draw(Graphics g, Rectangle bounds, IList<SlotView> slots, int scroll, long value, int caskets, int hot, int down, bool undoArmed, int icon, int gap, string tip, int tipX, int tipY, string mode = "grid", bool history = false, IList<long> opens = null, string detail = null, bool logged = false)
+        public static void Draw(Graphics g, Rectangle bounds, IList<SlotView> slots, int scroll, long value, int caskets, int hot, int down, bool undoArmed, int icon, int gap, string tip, int tipX, int tipY, string mode = "grid", bool history = false, IList<long> opens = null, string detail = null, bool logged = false, bool resetArmed = false)
         {
             if (string.IsNullOrEmpty(mode)) mode = "grid";
             int count = slots == null ? 0 : slots.Count;
@@ -229,7 +232,8 @@ namespace Chest
             }
 
             DrawFlat(g, face.HistoryButton, "History", history, hot == 0, down == 0);
-            DrawFlat(g, face.UndoButton, undoArmed ? "Undo?" : "Undo last", false, hot == 1, down == 1);
+            DrawFlat(g, face.UndoButton, undoArmed ? "Undo?" : "Undo", false, hot == 1, down == 1);
+            DrawFlat(g, face.ResetButton, resetArmed ? "Reset?" : "Reset", false, hot == 6, down == 6);
             DrawFlat(g, face.UnknownButton, "Unknown", false, hot == 2, down == 2);
             DrawFlat(g, face.DebugButton, "Debug", false, hot == 3, down == 3);
             DrawTip(g, bounds, tip, tipX, tipY);
