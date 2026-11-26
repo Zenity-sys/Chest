@@ -265,5 +265,26 @@ namespace Chest
                 bmp.Save(path, ImageFormat.Png);
             }
         }
+
+        public static byte[] Encode(Frame frame)
+        {
+            if (frame == null) return new byte[0];
+            using (MemoryStream stream = new MemoryStream())
+            using (Bitmap bmp = new Bitmap(frame.Width, frame.Height, PixelFormat.Format32bppArgb))
+            {
+                BitmapData data = bmp.LockBits(new Rectangle(0, 0, frame.Width, frame.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                try
+                {
+                    int stride = data.Stride;
+                    if (stride == frame.Width * 4) System.Runtime.InteropServices.Marshal.Copy(frame.Bgra, 0, data.Scan0, frame.Bgra.Length);
+                    else
+                        for (int y = 0; y < frame.Height; y++)
+                            System.Runtime.InteropServices.Marshal.Copy(frame.Bgra, y * frame.Width * 4, IntPtr.Add(data.Scan0, y * stride), frame.Width * 4);
+                }
+                finally { bmp.UnlockBits(data); }
+                bmp.Save(stream, ImageFormat.Png);
+                return stream.ToArray();
+            }
+        }
     }
 }

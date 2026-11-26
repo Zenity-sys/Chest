@@ -41,21 +41,34 @@ namespace Chest
         {
             RewardSession fresh = new RewardSession();
             fresh.MissesBeforeClose = 3;
-            string a = fresh.See(true, 5, "one");
-            string b = fresh.See(true, 5, "two");
-            string c = fresh.See(true, 5, "three");
-            Check(a == "opened" && b == "opened" && c == "opened" && Count(a, b, c) == 3, "three new caskets count as three");
+            int opened = 0;
+            string[] marks = new string[] { "one", "two", "three" };
+            for (int i = 0; i < 3; i++)
+            {
+                if (i > 0) { fresh.See(false, -1, null); fresh.See(false, -1, null); fresh.See(false, -1, null); }
+                if (fresh.See(true, 5, marks[i]) == "opened") opened++;
+            }
+            Check(opened == 3, "three new caskets count as three");
+
+            RewardSession held = new RewardSession();
+            held.MissesBeforeClose = 3;
+            int repeats = 0;
+            for (int i = 0; i < 100; i++)
+                if (held.See(true, 5, "same-frame") == "opened") repeats++;
+            Check(repeats == 1 && held.See(true, 5, "jitter-" + repeats) == "none", "the same open window logged 100 times is one casket");
+
+            RewardSession again = new RewardSession();
+            again.MissesBeforeClose = 3;
+            string firstOpen = again.See(true, 5, "alpha");
+            again.See(false, -1, null); again.See(false, -1, null); again.See(false, -1, null);
+            string secondOpen = again.See(true, 5, "beta");
+            Check(firstOpen == "opened" && secondOpen == "opened", "a window that closes and reopens is a second casket");
 
             RewardSession rolled = new RewardSession();
             string open = rolled.See(true, 5, "loot");
-            string swap = rolled.See(true, 4, "loot-2");
-            string hold = rolled.See(true, 4, "loot-2");
+            string swap = rolled.See(true, 4, "loot-changed");
+            string hold = rolled.See(true, 4, "loot-changed");
             Check(open == "opened" && swap == "replaced" && hold == "none" && Count(open, swap, hold) == 1, "a 5 to 4 reroll replaces the same casket");
-
-            RewardSession same = new RewardSession();
-            string first = same.See(true, 5, "alpha");
-            string second = same.See(true, 5, "beta");
-            Check(first == "opened" && second == "opened" && Count(first, second) == 2, "n staying at 5 across two caskets counts two");
 
             RewardSession refilled = new RewardSession();
             string low = refilled.See(true, 3, "old");
@@ -133,7 +146,10 @@ namespace Chest
         {
             List<Glyph> stack = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "stack.txt"));
             List<Glyph> value = RewardReader.LoadGlyphs(Path.Combine(root, "assets", "digits", "value.txt"));
-            Check(stack.Count >= 5 && value.Count >= 9, "digit templates load");
+            Check(stack.Count >= 5 && value.Count >= 10, "digit templates load");
+            Check(StampValue(value, "211,817 COINS!") == 211817, "211,817 COINS reads 211817");
+            Check(StampValue(value, "4,273 COINS!") == 4273, "4,273 COINS reads 4273");
+            Check(StampValue(value, "367,467 COINS!") == 367467, "367,467 COINS reads 367467");
             RewardReader.LoadTitle(Path.Combine(root, "assets", "reward", "trail-title.png"));
             int[][] quantities = new int[][] {
                 new int[] { 1, 1, 1, 1, 2 },
@@ -165,6 +181,7 @@ namespace Chest
                 foreach (int q in quantities[i]) expect += (expect.Length == 0 ? "" : ",") + q;
                 Check(got == expect, "master-" + i + " quantities " + got + " wanted " + expect);
                 Check(shot.Value == values[i], "master-" + i + " value " + shot.Value + " wanted " + values[i]);
+                if (i == 0) Check(RewardReader.Read(frame, panel, stack, value).Value == 210202, "master-0 keeps the comma and COINS");
                 Check(RewardReader.TitleMatches(frame, panel), "master-" + i + " title is TRAIL COMPLETE");
                 if (i == 1) first = shot;
             }
@@ -454,6 +471,42 @@ namespace Chest
                 bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             }
             catch (Exception) { }
+        }
+
+        static int StampValue(List<Glyph> glyphs, string text)
+        {
+            Frame frame = new Frame(new byte[640 * 280 * 4], 640, 280);
+            for (int i = 0; i < frame.Bgra.Length; i += 4)
+            {
+                frame.Bgra[i] = 16;
+                frame.Bgra[i + 1] = 24;
+                frame.Bgra[i + 2] = 32;
+                frame.Bgra[i + 3] = 255;
+            }
+            int x = 40;
+            int y = 116;
+            for (int c = 0; c < text.Length; c++)
+            {
+                char ch = text[c];
+                if (ch == ',') { x += 4; continue; }
+                if (ch == ' ') { x += 8; continue; }
+                if (ch < '0' || ch > '9') break;
+                Glyph glyph = null;
+                foreach (Glyph candidate in glyphs) if (candidate.Value == ch) glyph = candidate;
+                if (glyph == null) continue;
+                for (int yy = 0; yy < glyph.Height; yy++)
+                    for (int xx = 0; xx < glyph.Width; xx++)
+                    {
+                        if (!glyph.On[yy * glyph.Width + xx]) continue;
+                        int o = ((y + yy) * frame.Width + x + xx) * 4;
+                        frame.Bgra[o] = 236;
+                        frame.Bgra[o + 1] = 236;
+                        frame.Bgra[o + 2] = 246;
+                    }
+                x += glyph.Width + 1;
+            }
+            RewardShot shot = RewardReader.Read(frame, new Rectangle(0, 0, 396, 239), new List<Glyph>(), glyphs);
+            return shot.Value;
         }
 
         static string FindRoot()

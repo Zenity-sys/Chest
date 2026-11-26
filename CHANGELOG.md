@@ -1,3 +1,10 @@
+## 0.4.2
+
+- An open reward window is logged once. It is counted again only after it closes, or replaced when the reroll number drops by one.
+- The reward value keeps commas and ignores the COINS text, including amounts with an 8.
+- Item pictures keep their pixels. The count sits above the icon, drawn once.
+- Debug saves a zip of the current capture and the recent detection log.
+
 ## 0.4.1
 
 - A casket is logged as soon as TRAIL COMPLETE is on screen. Other red panels no longer block it.
