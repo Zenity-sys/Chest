@@ -232,6 +232,7 @@ namespace Chest
             icons = IconLibrary.Load(Path.Combine(assetPath, "icons"), Path.Combine(assetPath, "icons", "catalog.txt"));
             WikiLookup.UseAssets(assetPath);
             WikiLookup.CacheDirectory = Path.Combine(dataRoot, "wiki-cache");
+            WikiLookup.PrepareCache();
             RewardReader.LoadTitle(Path.Combine(assetPath, "reward", "trail-title.png"));
             RefreshGrid();
             follow.Interval = 50;
@@ -744,7 +745,7 @@ namespace Chest
         {
             if (item == null || item.Bgra == null) return;
             IconHit hit = IconLibrary.Match(icons, item.Bgra, item.Width, item.Height, layout.IconMatch);
-            if (hit.Known)
+            if (hit.Known && WikiLookup.AllowRename(item.Quantity, hit.Name))
             {
                 item.Named = true;
                 item.Name = hit.Name;
@@ -779,12 +780,14 @@ namespace Chest
                 byte[] sig = IconLibrary.Signature(cleaned, pw, ph);
                 line.Quantity = item.Quantity;
                 int knownLook = FindLook(sig);
+                if (item.Named && !WikiLookup.AllowRename(item.Quantity, item.Name)) item.Named = false;
+                if (knownLook >= 0 && !WikiLookup.AllowRename(item.Quantity, lookNames[knownLook])) knownLook = -1;
                 if (item.Named)
                 {
                     line.Id = item.Key;
                     line.Name = item.Name;
                 }
-                else if (hit != null && hit.Known)
+                else if (hit != null && hit.Known && WikiLookup.AllowRename(item.Quantity, hit.Name))
                 {
                     line.Id = string.IsNullOrEmpty(hit.Group) ? hit.Name : hit.Group;
                     line.Name = hit.Name;

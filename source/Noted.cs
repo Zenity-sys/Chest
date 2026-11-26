@@ -39,6 +39,110 @@ namespace Chest
 
         // Drops the flat slot colour and the certificate. Dark item pixels stay.
         // A sprite that is already transparent is left as it is.
+        // A noted slot whose parchment was already removed still has the dark
+        // certificate outline around a smaller item. Returns that item, scaled up.
+        public static byte[] InnerIcon(byte[] bgra, int width, int height, out int outWidth, out int outHeight)
+        {
+            outWidth = 0;
+            outHeight = 0;
+            if (bgra == null || width < 24 || height < 24) return null;
+            int n = width * height;
+            bool[] frame = new bool[n];
+            bool[] color = new bool[n];
+            int frameCount = 0;
+            for (int i = 0; i < n; i++)
+            {
+                int o = i * 4;
+                if (bgra[o + 3] < 128) continue;
+                int b = bgra[o], g = bgra[o + 1], r = bgra[o + 2];
+                if (r + g + b < 55 || IsPaper(r, g, b) || IsCertificate(r, g, b))
+                {
+                    frame[i] = true;
+                    frameCount++;
+                }
+                else color[i] = true;
+            }
+            if (frameCount < 80) return null;
+            byte[] seen = new byte[n];
+            int[] stack = new int[n];
+            int best = 0, bx0 = 0, by0 = 0, bx1 = -1, by1 = -1;
+            for (int start = 0; start < n; start++)
+            {
+                if (!color[start] || seen[start] != 0) continue;
+                int sp = 0;
+                stack[sp++] = start;
+                seen[start] = 1;
+                int count = 0, x0 = width, y0 = height, x1 = -1, y1 = -1;
+                while (sp > 0)
+                {
+                    int i = stack[--sp];
+                    int x = i % width, y = i / width;
+                    count++;
+                    if (x < x0) x0 = x;
+                    if (y < y0) y0 = y;
+                    if (x > x1) x1 = x;
+                    if (y > y1) y1 = y;
+                    PushColor(color, seen, stack, ref sp, width, height, x + 1, y);
+                    PushColor(color, seen, stack, ref sp, width, height, x - 1, y);
+                    PushColor(color, seen, stack, ref sp, width, height, x, y + 1);
+                    PushColor(color, seen, stack, ref sp, width, height, x, y - 1);
+                }
+                if (count > best)
+                {
+                    best = count;
+                    bx0 = x0;
+                    by0 = y0;
+                    bx1 = x1;
+                    by1 = y1;
+                }
+            }
+            if (best < 12 || bx1 < 0) return null;
+            if (bx0 < 2 || by0 < 2 || bx1 > width - 3 || by1 > height - 3) return null;
+            int left = 0, right = 0, top = 0, bottom = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (!frame[i]) continue;
+                int x = i % width, y = i / width;
+                if (x < bx0) left++;
+                else if (x > bx1) right++;
+                if (y < by0) top++;
+                else if (y > by1) bottom++;
+            }
+            if (left < 6 || right < 6 || top < 6 || bottom < 6) return null;
+            int cw = bx1 - bx0 + 1, ch = by1 - by0 + 1;
+            if (cw * ch * 10 > width * height * 7) return null;
+            int side = 32;
+            byte[] scaled = new byte[side * side * 4];
+            for (int y = 0; y < side; y++)
+                for (int x = 0; x < side; x++)
+                {
+                    int sx = bx0 + x * cw / side;
+                    int sy = by0 + y * ch / side;
+                    if (sx > bx1) sx = bx1;
+                    if (sy > by1) sy = by1;
+                    int fromIndex = sy * width + sx;
+                    if (!color[fromIndex]) continue;
+                    int from = fromIndex * 4;
+                    int to = (y * side + x) * 4;
+                    scaled[to] = bgra[from];
+                    scaled[to + 1] = bgra[from + 1];
+                    scaled[to + 2] = bgra[from + 2];
+                    scaled[to + 3] = 255;
+                }
+            outWidth = side;
+            outHeight = side;
+            return scaled;
+        }
+
+        static void PushColor(bool[] color, byte[] seen, int[] stack, ref int sp, int width, int height, int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height) return;
+            int i = y * width + x;
+            if (seen[i] != 0 || !color[i]) return;
+            seen[i] = 1;
+            stack[sp++] = i;
+        }
+
         public static byte[] CleanForDisplay(byte[] bgra, int width, int height)
         {
             if (bgra == null || width < 2 || height < 2) return bgra;

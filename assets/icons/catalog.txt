@@ -353,6 +353,8 @@ highwayman-mask.png|Highwayman mask|highwayman-mask|show
 hobby-unicorn-black.png|Hobby unicorn (black)|hobby-unicorn-black|show
 hobby-unicorn-white.png|Hobby unicorn (white)|hobby-unicorn-white|show
 holy-biscuits.png|Holy biscuits|holy-biscuits|show
+holy-biscuits-10.png|Holy biscuits|holy-biscuits|match
+holy-biscuits-25.png|Holy biscuits|holy-biscuits|match
 huge-bladed-adamant-salvage.png|Huge bladed adamant salvage|huge-bladed-adamant-salvage|show
 huge-bladed-bronze-salvage.png|Huge bladed bronze salvage|huge-bladed-bronze-salvage|show
 huge-bladed-iron-salvage.png|Huge bladed iron salvage|huge-bladed-iron-salvage|show
@@ -494,6 +496,7 @@ off-hand-steel-crossbow.png|Off-hand steel crossbow|off-hand-steel-crossbow|show
 off-hand-suitcase.png|Off-hand suitcase|off-hand-suitcase|show
 onion-seed.png|Onion seed|onion-seed|show
 onyx-bolt-tips.png|Onyx bolt tips|onyx-bolt-tips|show
+onyx-bolt-tips-3.png|Onyx bolt tips|onyx-bolt-tips|match
 onyx-dragon-mask.png|Onyx dragon mask|onyx-dragon-mask|show
 orange-boater.png|Orange boater|orange-boater|show
 orange-tree-seed.png|Orange tree seed|orange-tree-seed|show
@@ -524,6 +527,7 @@ purple-elegant-shirt.png|Purple elegant shirt|purple-elegant-shirt|show
 purple-elegant-skirt.png|Purple elegant skirt|purple-elegant-skirt|show
 purple-firelighter.png|Purple firelighter|purple-firelighter|show
 purple-sweets.png|Purple sweets|purple-sweets|show
+purple-sweets-10.png|Purple sweets|purple-sweets|match
 puzzle-box-skipping-ticket.png|Puzzle box skipping ticket|puzzle-box-skipping-ticket|show
 pyjama-bottoms.png|Pyjama bottoms|pyjama-bottoms|show
 pyjama-slippers.png|Pyjama slippers|pyjama-slippers|show
@@ -809,6 +813,8 @@ wolf-staff.png|Wolf staff|wolf-staff|show
 yanillian-seed.png|Yanillian seed|yanillian-seed|show
 yew-composite-bow.png|Yew composite bow|yew-composite-bow|show
 yew-seed.png|Yew seed|yew-seed|show
+yew-seed-1.png|Yew seed|yew-seed|match
+yew-seed-3.png|Yew seed|yew-seed|match
 zamorak-arrows.png|Zamorak arrows|zamorak-arrows|show
 zamorak-bow.png|Zamorak bow|zamorak-bow|show
 zamorak-cloak.png|Zamorak cloak|zamorak-cloak|show

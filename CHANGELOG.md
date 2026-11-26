@@ -1,3 +1,9 @@
+## 0.6.8
+
+- More reward icons are recognised, including stack sizes of holy biscuits, yew seeds, purple sweets, and onyx bolt tips, and a noted item is unwrapped before it is named.
+- An old wiki cache is cleared on upgrade, and a stack of more than one item is never renamed into worn gear.
+- A wide comma in the reward value no longer drops the rest of the number.
+
 ## 0.6.7
 
 - Reward values keep every digit, including long amounts with several commas, and values over two billion no longer overflow.
