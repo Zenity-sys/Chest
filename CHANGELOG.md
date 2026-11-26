@@ -1,3 +1,8 @@
+## 0.6.7
+
+- Reward values keep every digit, including long amounts with several commas, and values over two billion no longer overflow.
+- A stack of an unknown item is no longer renamed into worn gear such as a staff.
+
 ## 0.6.6
 
 - REROLL REWARD (2) reads as 2. A wide digit with a flat base is a 2 when 1, 3, 4 and 5 do not match.

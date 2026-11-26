@@ -155,9 +155,10 @@ namespace Chest
         }
 
         // A background lookup named an item that was saved as Unknown.
-        public bool RenameUnknown(string oldId, string newId, string newName)
+        public bool RenameUnknown(string oldId, string newId, string newName, int seenQuantity)
         {
             if (string.IsNullOrEmpty(oldId) || string.IsNullOrEmpty(newId) || string.IsNullOrEmpty(newName)) return false;
+            if (!WikiLookup.AllowRename(seenQuantity, newName)) return false;
             LootLine line = Find(oldId);
             if (line == null || !line.Unknown) return false;
             LootLine existing = Find(newId);
